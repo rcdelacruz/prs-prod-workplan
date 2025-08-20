@@ -1,0 +1,661 @@
+# PRS On-Premises Production Docker Compose Configuration
+# Adapted from EC2 Graviton setup for on-premises deployment
+# Optimized for 16GB RAM, 100 concurrent users, and dual storage (SSD/HDD)
+
+services:
+  # Nginx Reverse Proxy (On-Premises Production - Internal Network)
+  nginx:
+    image: nginx:1.24-alpine
+    container_name: prs-onprem-nginx
+    restart: unless-stopped
+    ports:
+      # Bind to internal network interface for client access
+      - "${SERVER_IP:-192.168.16.100}:${HTTP_PORT:-80}:80"
+      - "${SERVER_IP:-192.168.16.100}:${HTTPS_PORT:-443}:443"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE:-100m}"
+        max-file: "5"
+        compress: "true"
+        labels: "service=nginx,environment=production,deployment=onprem"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/sites-enabled:/etc/nginx/sites-enabled:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - uploads_data:/var/www/uploads:ro
+      - nginx_cache:/var/cache/nginx
+      # Mount SSD for nginx cache performance
+      - /mnt/ssd/nginx-cache:/var/cache/nginx/ssd
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      prs_onprem_network:
+        ipv4_address: 192.168.100.5
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: ${NGINX_MEMORY_LIMIT:-256m}
+          cpus: '0.5'
+
+  # Backend API (On-Premises Production - Enhanced for 100 users)
+  backend:
+    image: prs-backend:${VERSION:-latest}
+    container_name: prs-onprem-backend
+    restart: unless-stopped
+    build:
+      context: ${REPOS_BASE_DIR:-/opt/prs}/${BACKEND_REPO_NAME:-prs-backend-a}
+      dockerfile: Dockerfile.prod
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE:-100m}"
+        max-file: "10"
+        compress: "true"
+        labels: "service=prs-backend,environment=production,deployment=onprem"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=4000
+      - HOST=0.0.0.0
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+      # Database configuration (Enhanced for 16GB RAM)
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_PORT=5432
+      - DIALECT=${DIALECT:-postgres}
+      - DISABLE_SSL=${DISABLE_SSL:-false}
+
+      # SSL Configuration (Production SSL Enabled)
+      - POSTGRES_SSL_ENABLED=${POSTGRES_SSL_ENABLED:-true}
+      - POSTGRES_SSL_REQUIRE=${POSTGRES_SSL_REQUIRE:-false}
+      - POSTGRES_SSL_REJECT_UNAUTHORIZED=${POSTGRES_SSL_REJECT_UNAUTHORIZED:-false}
+
+      # Database Pool Configuration (Optimized for 100 users)
+      - POOL_MIN=${POOL_MIN:-5}
+      - POOL_MAX=${POOL_MAX:-20}
+      - POOL_ACQUIRE=${POOL_ACQUIRE:-30000}
+      - POOL_IDLE=${POOL_IDLE:-10000}
+      - POOL_EVICTION=${POOL_EVICTION:-20000}
+
+      # Database Connection Settings
+      - DB_CONNECTION_TIMEOUT=${DB_CONNECTION_TIMEOUT:-30000}
+      - DB_QUERY_TIMEOUT=${DB_QUERY_TIMEOUT:-60000}
+      - DB_IDLE_TIMEOUT=${DB_IDLE_TIMEOUT:-10000}
+
+      # Application secrets
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - OTP_KEY=${OTP_KEY}
+      - PASS_SECRET=${PASS_SECRET}
+      - BYPASS_OTP=${BYPASS_OTP:-false}
+
+      # CORS and API settings (On-premises network)
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CITYLAND_API_URL=${CITYLAND_API_URL}
+      - CITYLAND_ACCOUNTING_URL=${CITYLAND_ACCOUNTING_URL}
+      - CITYLAND_API_USERNAME=${CITYLAND_API_USERNAME}
+      - CITYLAND_API_PASSWORD=${CITYLAND_API_PASSWORD}
+
+      # File upload settings (SSD storage)
+      - UPLOAD_DRIVER=local
+      - UPLOAD_PATH=/usr/app/upload
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-50m}
+      - UPLOAD_MAX_FILES=${UPLOAD_MAX_FILES:-10}
+      - UPLOAD_MAX_SIZE_PER_FILE=${UPLOAD_MAX_SIZE_PER_FILE:-10m}
+      - UPLOAD_ALLOWED_EXTENSIONS=${UPLOAD_ALLOWED_EXTENSIONS}
+
+      # Redis Configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_ENABLED=${REDIS_ENABLED:-true}
+      - CACHE_TTL=${CACHE_TTL:-3600}
+
+      # Monitoring
+      - PROMETHEUS_ENABLED=${PROMETHEUS_ENABLED:-true}
+      - ENABLE_METRICS=${ENABLE_METRICS:-true}
+      - ENABLE_HEALTH_CHECKS=${ENABLE_HEALTH_CHECKS:-true}
+      - ENABLE_AUDIT_LOGS=${ENABLE_AUDIT_LOGS:-true}
+      - LOKI_ENABLED=false
+
+      # Root user
+      - ROOT_USER_NAME=${ROOT_USER_NAME}
+      - ROOT_USER_EMAIL=${ROOT_USER_EMAIL}
+      - ROOT_USER_PASSWORD=${ROOT_USER_PASSWORD}
+
+      # Production settings
+      - ENABLE_DEBUG_LOGS=${ENABLE_DEBUG_LOGS:-false}
+      - ERROR_STACK_TRACE=${ERROR_STACK_TRACE:-false}
+      - ERROR_DETAILS=${ERROR_DETAILS:-false}
+
+      # Security settings
+      - ENABLE_SECURITY_HEADERS=${ENABLE_SECURITY_HEADERS:-true}
+      - ENABLE_RATE_LIMITING=${ENABLE_RATE_LIMITING:-true}
+      - API_RATE_LIMIT_WINDOW=${API_RATE_LIMIT_WINDOW:-15}
+      - API_RATE_LIMIT_MAX_REQUESTS=${API_RATE_LIMIT_MAX_REQUESTS:-100}
+
+      # Session Configuration
+      - SESSION_TIMEOUT=${SESSION_TIMEOUT:-3600}
+      - MAX_LOGIN_ATTEMPTS=${MAX_LOGIN_ATTEMPTS:-5}
+      - LOCKOUT_DURATION=${LOCKOUT_DURATION:-900}
+
+      # Performance settings (16GB RAM optimized)
+      - NODEJS_MAX_OLD_SPACE_SIZE=${NODEJS_MAX_OLD_SPACE_SIZE:-2048}
+
+    volumes:
+      # Mount SSD for uploads and active data
+      - uploads_data:/usr/app/upload
+      - logs_data:/usr/app/logs
+      # Mount HDD for log archives
+      - /mnt/hdd/app-logs-archive:/usr/app/logs/archive
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      prs_onprem_network:
+        ipv4_address: 192.168.100.20
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const http = require('http'); const req = http.request({hostname: 'localhost', port: 4000, path: '/health', method: 'GET', timeout: 5000}, (res) => process.exit(res.statusCode < 500 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();\""]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: ${BACKEND_MEMORY_LIMIT:-4g}
+          cpus: '2.0'
+
+  # Frontend Application (On-Premises Production - Enhanced Caching)
+  frontend:
+    image: prs-frontend:${VERSION:-latest}
+    container_name: prs-onprem-frontend
+    restart: unless-stopped
+    build:
+      context: ${REPOS_BASE_DIR:-/opt/prs}/${FRONTEND_REPO_NAME:-prs-frontend-a}
+      dockerfile: Dockerfile.prod
+      args:
+        - VITE_APP_API_URL=https://${DOMAIN}/api
+        - VITE_APP_UPLOAD_URL=https://${DOMAIN}/api/upload
+        - VITE_APP_ENVIRONMENT=${VITE_APP_ENVIRONMENT:-production}
+        - VITE_APP_ENABLE_DEVTOOLS=${VITE_APP_ENABLE_DEVTOOLS:-false}
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - VITE_APP_API_URL=https://${DOMAIN}/api
+      - VITE_APP_UPLOAD_URL=https://${DOMAIN}/api/upload
+      - VITE_APP_ENVIRONMENT=${VITE_APP_ENVIRONMENT:-production}
+      - VITE_APP_ENABLE_DEVTOOLS=${VITE_APP_ENABLE_DEVTOOLS:-false}
+    networks:
+      prs_onprem_network:
+        ipv4_address: 192.168.100.15
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: ${FRONTEND_MEMORY_LIMIT:-1g}
+          cpus: '1.0'
+
+  # PostgreSQL Database with TimescaleDB (On-Premises - 16GB RAM Optimized)
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: prs-onprem-postgres-timescale
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--auth-local=md5
+      # TimescaleDB specific settings
+      - TIMESCALEDB_TELEMETRY=off
+    command: >
+      postgres
+      -c max_connections=${POSTGRES_MAX_CONNECTIONS:-150}
+      -c shared_buffers=${POSTGRES_SHARED_BUFFERS:-2GB}
+      -c effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-12GB}
+      -c work_mem=${POSTGRES_WORK_MEM:-32MB}
+      -c maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-512MB}
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=${POSTGRES_WAL_BUFFERS:-32MB}
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=${POSTGRES_EFFECTIVE_IO_CONCURRENCY:-200}
+      -c ssl=${POSTGRES_SSL_MODE:-on}
+      -c ssl_cert_file=${POSTGRES_SSL_CERT_FILE:-/etc/ssl/certs/server.crt}
+      -c ssl_key_file=${POSTGRES_SSL_KEY_FILE:-/etc/ssl/private/server.key}
+      -c log_statement=${POSTGRES_LOG_STATEMENT:-mod}
+      -c log_min_duration_statement=${POSTGRES_LOG_MIN_DURATION:-1000}
+      -c shared_preload_libraries=timescaledb
+      -c timescaledb.max_background_workers=${TIMESCALEDB_MAX_BACKGROUND_WORKERS:-16}
+      -c max_worker_processes=${POSTGRES_MAX_WORKER_PROCESSES:-32}
+      -c max_parallel_workers=${POSTGRES_MAX_PARALLEL_WORKERS:-16}
+      -c max_parallel_workers_per_gather=${POSTGRES_MAX_PARALLEL_WORKERS_PER_GATHER:-4}
+      -c wal_level=replica
+      -c max_wal_size=${POSTGRES_MAX_WAL_SIZE:-2GB}
+      -c min_wal_size=${POSTGRES_MIN_WAL_SIZE:-512MB}
+      -c checkpoint_timeout=${POSTGRES_CHECKPOINT_TIMEOUT:-15min}
+      -c archive_mode=off
+      -c log_checkpoints=on
+      -c log_connections=on
+      -c log_disconnections=on
+      -c log_lock_waits=on
+      -c deadlock_timeout=1s
+      -c log_temp_files=0
+      -c temp_tablespaces=ssd_hot
+      -c default_tablespace=ssd_hot
+    volumes:
+      - database_data:/var/lib/postgresql/data
+      - ./ssl:/etc/ssl/certs:ro
+      - ./ssl:/etc/ssl/private:ro
+      # TimescaleDB dual storage configuration
+      - /mnt/ssd/postgresql-hot:/mnt/ssd/postgresql-hot
+      - /mnt/hdd/postgresql-cold:/mnt/hdd/postgresql-cold
+      # Mount HDD storage for WAL archives and backups
+      - /mnt/hdd/postgres-wal-archive:/var/lib/postgresql/wal-archive
+      - /mnt/hdd/postgres-backups:/var/lib/postgresql/backups
+    networks:
+      prs_onprem_network:
+        ipv4_address: 192.168.100.30
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_MEMORY_LIMIT:-6g}
+          cpus: '3.0'
+
+  # Redis - Queue and Cache (On-Premises - Enhanced for 16GB RAM)
+  redis:
+    image: redis:7-alpine
+    container_name: prs-onprem-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_MEMORY_LIMIT:-2g}
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+      --timeout 0
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --loglevel notice
+      --client-output-buffer-limit normal 0 0 0
+      --client-output-buffer-limit replica 256mb 64mb 60
+      --client-output-buffer-limit pubsub 32mb 8mb 60
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+      # Mount SSD for Redis persistence performance
+      - /mnt/ssd/redis-persistence:/data/ssd
+      # Mount HDD for Redis backups
+      - /mnt/hdd/redis-backups:/data/backups
+    networks:
+      prs_onprem_network:
+        ipv4_address: 192.168.100.35
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: ${REDIS_MEMORY_LIMIT:-2g}
+          cpus: '1.0'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE:-100m}"
+        max-file: "5"
+        compress: "true"
+        labels: "service=redis,environment=production,deployment=onprem"
+
+  # Redis Worker - Background Job Processing (On-Premises - Enhanced)
+  redis-worker:
+    image: prs-backend-worker:${VERSION:-latest}
+    container_name: prs-onprem-redis-worker
+    restart: unless-stopped
+    build:
+      context: ${REPOS_BASE_DIR:-/opt/prs}/${BACKEND_REPO_NAME:-prs-backend-a}
+      dockerfile: Dockerfile.worker
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE:-100m}"
+        max-file: "5"
+        compress: "true"
+        labels: "service=redis-worker,environment=production,deployment=onprem"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+      # Database configuration
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_PORT=5432
+      - DIALECT=${DIALECT:-postgres}
+      - DISABLE_SSL=${DISABLE_SSL:-false}
+
+      # SSL Configuration (Production SSL Enabled)
+      - POSTGRES_SSL_ENABLED=${POSTGRES_SSL_ENABLED:-true}
+      - POSTGRES_SSL_REQUIRE=${POSTGRES_SSL_REQUIRE:-false}
+      - POSTGRES_SSL_REJECT_UNAUTHORIZED=${POSTGRES_SSL_REJECT_UNAUTHORIZED:-false}
+
+      # Database Pool Configuration
+      - POOL_MIN=${POOL_MIN:-2}
+      - POOL_MAX=${POOL_MAX:-10}
+      - POOL_ACQUIRE=${POOL_ACQUIRE:-30000}
+      - POOL_IDLE=${POOL_IDLE:-10000}
+      - POOL_EVICTION=${POOL_EVICTION:-20000}
+
+      # Redis Configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+      # Application secrets
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - OTP_KEY=${OTP_KEY}
+      - PASS_SECRET=${PASS_SECRET}
+
+      # External API Configuration
+      - CITYLAND_API_URL=${CITYLAND_API_URL}
+      - CITYLAND_ACCOUNTING_URL=${CITYLAND_ACCOUNTING_URL}
+      - CITYLAND_API_USERNAME=${CITYLAND_API_USERNAME}
+      - CITYLAND_API_PASSWORD=${CITYLAND_API_PASSWORD}
+
+      # Performance settings
+      - NODEJS_MAX_OLD_SPACE_SIZE=${NODEJS_MAX_OLD_SPACE_SIZE:-1024}
+    volumes:
+      - logs_data:/app/logs
+      # Mount HDD for worker log archives
+      - /mnt/hdd/worker-logs-archive:/app/logs/archive
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      prs_onprem_network:
+        ipv4_address: 192.168.100.40
+    deploy:
+      resources:
+        limits:
+          memory: ${WORKER_MEMORY_LIMIT:-1g}
+          cpus: '1.0'
+
+  # Adminer - Database Management (On-Premises - Internal Network)
+  adminer:
+    image: adminer:latest
+    container_name: prs-onprem-adminer
+    restart: unless-stopped
+    ports:
+      # Bind to internal network for client access
+      - "${SERVER_IP:-192.168.16.100}:${ADMINER_PORT:-8080}:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=postgres
+      - ADMINER_DESIGN=hydra
+    networks:
+      prs_onprem_network:
+        ipv4_address: 192.168.100.10
+    depends_on:
+      - postgres
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: '0.2'
+
+  # Prometheus - Metrics Collection (On-Premises - Enhanced Retention)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prs-onprem-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-30d}'
+      - '--storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-10GB}'
+      - '--web.external-url=https://${DOMAIN}/prometheus'
+      - '--web.route-prefix=/prometheus'
+      - '--web.listen-address=0.0.0.0:9090'
+    ports:
+      # Bind to internal network for client access
+      - "${SERVER_IP:-192.168.16.100}:9090:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+      # Mount SSD for Prometheus data performance
+      - /mnt/ssd/prometheus-data:/prometheus/ssd
+      # Mount HDD for Prometheus archives
+      - /mnt/hdd/prometheus-archive:/prometheus/archive
+    networks:
+      prs_onprem_network:
+        ipv4_address: 192.168.100.45
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/prometheus/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: ${PROMETHEUS_MEMORY_LIMIT:-1g}
+          cpus: '1.0'
+    profiles:
+      - monitoring
+
+  # Grafana - Monitoring Dashboard (On-Premises - Enhanced)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: prs-onprem-grafana
+    restart: unless-stopped
+    ports:
+      # Bind to internal network for client access
+      - "${SERVER_IP:-192.168.16.100}:${GRAFANA_PORT:-3001}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=https://${GRAFANA_SUBDOMAIN:-grafana}.${DOMAIN}
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-clock-panel,grafana-simple-json-datasource
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - GF_DATABASE_TYPE=postgres
+      - GF_DATABASE_HOST=postgres:5432
+      - GF_DATABASE_NAME=${POSTGRES_DB}
+      - GF_DATABASE_USER=${POSTGRES_USER}
+      - GF_DATABASE_PASSWORD=${POSTGRES_PASSWORD}
+      - GF_DATABASE_SSL_MODE=disable
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./config/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      # Mount SSD for Grafana data performance
+      - /mnt/ssd/grafana-data:/var/lib/grafana/ssd
+    networks:
+      prs_onprem_network:
+        ipv4_address: 192.168.100.25
+    depends_on:
+      - prometheus
+      - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: ${GRAFANA_MEMORY_LIMIT:-1g}
+          cpus: '1.0'
+    profiles:
+      - monitoring
+
+  # Node Exporter - System Metrics (On-Premises - Enhanced)
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: prs-onprem-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--collector.netdev.device-exclude=^(veth|docker|br-).*'
+      - '--collector.diskstats.ignored-devices=^(ram|loop|fd|(h|s|v|xv)d[a-z]|nvme\\d+n\\d+p)\\d+$'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+      - /mnt/ssd:/host/ssd:ro
+      - /mnt/hdd:/host/hdd:ro
+    networks:
+      prs_onprem_network:
+        ipv4_address: 192.168.100.50
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: '0.2'
+    profiles:
+      - monitoring
+
+  # Portainer - Container Management (On-Premises - Internal Network)
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: prs-onprem-portainer
+    restart: unless-stopped
+    command: -H unix:///var/run/docker.sock
+    ports:
+      # Bind to internal network for client access
+      - "${SERVER_IP:-192.168.16.100}:${PORTAINER_PORT:-9000}:9000"
+    environment:
+      - PORTAINER_DOCKER_ENDPOINT=unix:///var/run/docker.sock
+    volumes:
+      - ${DOCKER_SOCK_PATH:-/var/run/docker.sock}:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      prs_onprem_network:
+        ipv4_address: 192.168.100.55
+    healthcheck:
+      test: ["CMD", "/portainer", "--help"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.5'
+
+# Network Configuration (On-Premises Internal Network)
+networks:
+  prs_onprem_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NETWORK_SUBNET:-192.168.100.0/24}
+          gateway: 192.168.100.1
+    driver_opts:
+      com.docker.network.bridge.name: prs-onprem-br0
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.driver.mtu: 1500
+
+# Volume Configuration (Optimized for SSD/HDD Dual Storage)
+volumes:
+  # Database volumes (Primary on SSD, backup on HDD)
+  database_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/ssd/postgresql-data
+
+  # Redis volumes (Primary on SSD, backup on HDD)
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/ssd/redis-data
+
+  # Upload volumes (Primary on SSD, archive on HDD)
+  uploads_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/ssd/uploads
+
+  # Log volumes (Active on SSD, archive on HDD)
+  logs_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/ssd/logs
+
+  # Nginx cache (SSD for performance)
+  nginx_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/ssd/nginx-cache
+
+  # Prometheus data (Primary on SSD, archive on HDD)
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/ssd/prometheus-data
+
+  # Grafana data (SSD for dashboard performance)
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/ssd/grafana-data
+
+  # Portainer data (SSD for management interface)
+  portainer_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/ssd/portainer-data

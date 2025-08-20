@@ -1,0 +1,249 @@
+# PRS On-Premises Alert Rules
+# Comprehensive alerting for production monitoring
+
+groups:
+  # System-level alerts
+  - name: system_alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "High CPU usage detected on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}% for more than 5 minutes"
+          runbook_url: "https://wiki.client-domain.com/runbooks/high-cpu"
+
+      - alert: CriticalCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+          category: system
+        annotations:
+          summary: "Critical CPU usage detected on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}% for more than 2 minutes"
+
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+          category: system
+        annotations:
+          summary: "High memory usage detected on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value }}% for more than 5 minutes"
+
+      - alert: SSDStorageWarning
+        expr: (node_filesystem_size_bytes{mountpoint="/mnt/ssd"} - node_filesystem_avail_bytes{mountpoint="/mnt/ssd"}) / node_filesystem_size_bytes{mountpoint="/mnt/ssd"} * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+          category: storage
+        annotations:
+          summary: "SSD storage usage high"
+          description: "SSD storage usage is {{ $value }}% on {{ $labels.instance }}"
+
+      - alert: SSDStorageCritical
+        expr: (node_filesystem_size_bytes{mountpoint="/mnt/ssd"} - node_filesystem_avail_bytes{mountpoint="/mnt/ssd"}) / node_filesystem_size_bytes{mountpoint="/mnt/ssd"} * 100 > 90
+        for: 1m
+        labels:
+          severity: critical
+          category: storage
+        annotations:
+          summary: "SSD storage usage critical"
+          description: "SSD storage usage is {{ $value }}% on {{ $labels.instance }}"
+
+      - alert: HDDStorageWarning
+        expr: (node_filesystem_size_bytes{mountpoint="/mnt/hdd"} - node_filesystem_avail_bytes{mountpoint="/mnt/hdd"}) / node_filesystem_size_bytes{mountpoint="/mnt/hdd"} * 100 > 70
+        for: 5m
+        labels:
+          severity: warning
+          category: storage
+        annotations:
+          summary: "HDD storage usage high"
+          description: "HDD storage usage is {{ $value }}% on {{ $labels.instance }}"
+
+      - alert: SystemLoadHigh
+        expr: node_load15 / count by(instance) (node_cpu_seconds_total{mode="idle"}) > 2
+        for: 10m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "High system load on {{ $labels.instance }}"
+          description: "15-minute load average is {{ $value }}"
+
+  # Application-level alerts
+  - name: application_alerts
+    rules:
+      - alert: ApplicationDown
+        expr: up{job="prs-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: application
+        annotations:
+          summary: "PRS Backend is down"
+          description: "PRS Backend application is not responding"
+
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database is not responding"
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: cache
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache server is not responding"
+
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High response time detected"
+          description: "95th percentile response time is {{ $value }}s"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) * 100 > 5
+        for: 5m
+        labels:
+          severity: critical
+          category: application
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value }}% for more than 5 minutes"
+
+      - alert: TooManyConnections
+        expr: pg_stat_activity_count > 120
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "Too many database connections"
+          description: "Database has {{ $value }} active connections"
+
+  # TimescaleDB specific alerts
+  - name: timescaledb_alerts
+    rules:
+      - alert: TimescaleDBCompressionFailed
+        expr: increase(timescaledb_compression_errors_total[1h]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "TimescaleDB compression failed"
+          description: "{{ $value }} compression errors in the last hour"
+
+      - alert: TimescaleDBChunkCreationHigh
+        expr: rate(timescaledb_chunks_created_total[1h]) > 100
+        for: 10m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "High TimescaleDB chunk creation rate"
+          description: "Creating {{ $value }} chunks per hour"
+
+      - alert: TimescaleDBReplicationLag
+        expr: pg_replication_lag_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "TimescaleDB replication lag high"
+          description: "Replication lag is {{ $value }} seconds"
+
+  # Network and security alerts
+  - name: network_security_alerts
+    rules:
+      - alert: HighNetworkTraffic
+        expr: rate(node_network_receive_bytes_total[5m]) > 100000000  # 100MB/s
+        for: 10m
+        labels:
+          severity: warning
+          category: network
+        annotations:
+          summary: "High network traffic on {{ $labels.instance }}"
+          description: "Network receive rate is {{ $value }} bytes/s"
+
+      - alert: TooManyFailedLogins
+        expr: increase(failed_login_attempts_total[5m]) > 10
+        for: 1m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Too many failed login attempts"
+          description: "{{ $value }} failed login attempts in 5 minutes"
+
+      - alert: SSLCertificateExpiring
+        expr: ssl_certificate_expiry_days < 30
+        for: 1h
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "SSL certificate expiring soon"
+          description: "SSL certificate expires in {{ $value }} days"
+
+      - alert: SSLCertificateExpired
+        expr: ssl_certificate_expiry_days < 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "SSL certificate has expired"
+          description: "SSL certificate expired {{ $value }} days ago"
+
+  # Backup and maintenance alerts
+  - name: backup_alerts
+    rules:
+      - alert: BackupFailed
+        expr: backup_success_total == 0
+        for: 25h  # Daily backup should complete within 24 hours
+        labels:
+          severity: critical
+          category: backup
+        annotations:
+          summary: "Backup failed"
+          description: "No successful backup in the last 24 hours"
+
+      - alert: BackupOld
+        expr: time() - backup_last_success_timestamp > 86400  # 24 hours
+        for: 1h
+        labels:
+          severity: warning
+          category: backup
+        annotations:
+          summary: "Backup is old"
+          description: "Last successful backup was {{ $value }} seconds ago"
+
+      - alert: DiskIOHigh
+        expr: rate(node_disk_io_time_seconds_total[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          category: storage
+        annotations:
+          summary: "High disk I/O on {{ $labels.instance }}"
+          description: "Disk I/O utilization is {{ $value }}"
