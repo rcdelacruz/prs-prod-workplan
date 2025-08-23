@@ -1,3 +1,194 @@
+# PRS On-Premises Deployment .gitignore
+
+# Environment and Configuration Files
+.env
+.env.*
+!.env.example
+!.env.template
+
+# SSL Certificates and Keys
 *.key
 *.crt
-.env
+02-docker-configuration/ssl/*.crt
+02-docker-configuration/ssl/*.key
+02-docker-configuration/ssl/*.pem
+02-docker-configuration/ssl/*.p12
+02-docker-configuration/ssl/*.pfx
+!02-docker-configuration/ssl/.gitkeep
+!02-docker-configuration/ssl/README.md
+
+# Database Data and Backups
+data/
+backups/
+*.sql
+*.dump
+*.backup
+
+# Docker Volumes and Data
+docker-data/
+postgres-data/
+redis-data/
+uploads/
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Temporary Files
+tmp/
+temp/
+.tmp/
+*.tmp
+*.temp
+
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor and IDE Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vim/
+
+# Node.js (if any local development)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python (if any scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Documentation Build
+docs/site/
+docs/.venv/
+docs/node_modules/
+
+# Monitoring Data
+monitoring-data/
+prometheus-data/
+grafana-data/
+
+# Secrets and Sensitive Data
+secrets/
+*.secret
+*.private
+*_rsa
+*_dsa
+*_ecdsa
+*_ed25519
+
+# Custom Configuration Overrides
+config/local/
+config/custom/
+*-local.yml
+*-custom.yml
+*-override.yml
+
+# Backup Scripts Output
+backup-reports/
+maintenance-reports/
+health-check-reports/
+
+# Testing and Development
+test-data/
+dev-data/
+*.test
+*.spec
+
+# Lock Files (keep package manager lock files)
+# Uncomment if you want to ignore them
+# package-lock.json
+# yarn.lock
+# composer.lock
+
+# Runtime Files
+*.pid
+*.sock
+*.lock
+
+# Cache Directories
+.cache/
+cache/
+.npm/
+.yarn/
+
+# Build Artifacts
+build/
+dist/
+out/
+
+# Local Environment Overrides
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Deployment Specific
+deployment-config.local.yml
+inventory.local.yml
+
+# Performance and Profiling
+*.prof
+*.trace
+
+# Documentation Drafts
+docs/drafts/
+*.draft.md
+
+# Local Scripts and Utilities
+scripts/local/
+scripts/custom/
+local-*.sh
+custom-*.sh
+
+# Terraform (if used for infrastructure)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Ansible (if used for configuration management)
+*.retry
+.vault_pass
+
+# Kubernetes (if used for orchestration)
+*.kubeconfig
+kube-config
+
+# Helm (if used for Kubernetes deployments)
+charts/*/charts/
+charts/*/requirements.lock
+
+# Local Development Overrides
+.local/
+local/
+
+# Ignore compiled documentation
+docs/docs/.venv/
+docs/docs/node_modules/
+
+# Ignore MkDocs build artifacts
+docs/site/
+
+# Ignore any local customizations
+*-local.*
+*-custom.*
+local-*
+custom-*
