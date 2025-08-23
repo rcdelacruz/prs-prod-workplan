@@ -1,363 +1,440 @@
-# Quick Start Guide
+# Quick Start Guide - PRS Deployment
 
-## Rapid Deployment (30 Minutes)
+## Overview
 
-This guide will get your PRS system running in production in approximately 30 minutes, assuming all [prerequisites](prerequisites.md) are met.
+This guide will get you from zero to a fully operational PRS system in **2-3 hours** using the proven `deploy-onprem.sh` script with helpful configuration tools.
 
-## Step 1: Environment Setup (5 minutes)
+### What You'll Get
 
-### Repository
+- **Complete PRS application stack** with all services running
+- **SSL/TLS security** with GoDaddy or Let's Encrypt support
+- **Enterprise backup system** with optional NAS integration
+- **Comprehensive monitoring** with Grafana dashboards
+- **Automated maintenance** and health checks
+- **Office network security** configuration
 
-```bash
-# Navigate to deployment directory
-cd /opt
+### Simple 3-Step Process
 
-# Clone the deployment repository
-sudo git clone https://github.com/your-org/prs-deployment.git
-sudo chown -R $USER:$USER /opt/prs-deployment
-cd /opt/prs-deployment
-```
+| Step | Duration | Description |
+|------|----------|-------------|
+| **1. Configure** | 10-15 min | Use helper script to set up configuration |
+| **2. Deploy** | 1-2 hours | Run deploy-onprem.sh for complete deployment |
+| **3. Automate** | 15-30 min | Set up backup and monitoring automation |
 
-### Storage
+**Total Time: 2-3 hours**
 
-```bash
-# Run automated storage setup
-cd scripts
-sudo ./setup-storage.sh
+!!! danger "Prerequisites Required"
+    **STOP!** You must complete [Prerequisites](prerequisites.md) first. The deployment will fail without proper server setup (storage mounts, user account, etc.).
 
-# Verify storage structure
-ls -la /mnt/ssd/
-ls -la /mnt/hdd/
-```
+!!! success "Proven Approach"
+    This guide uses the existing, battle-tested `deploy-onprem.sh` script that handles all the complex deployment logic. We simply add configuration helpers and post-deployment automation.
 
-Expected output:
-```
-/mnt/ssd/:
-├── postgresql-hot/
-├── redis-data/
-├── uploads/
-├── logs/
-└── nginx-cache/
-
-/mnt/hdd/:
-├── postgresql-cold/
-├── postgres-backups/
-└── app-logs-archive/
-```
-
-## Step 2: Configuration (10 minutes)
-
-### Variables
-
-```bash
-# Copy environment template
-cp 02-docker-configuration/.env.example 02-docker-configuration/.env
-
-# Edit configuration (use your preferred editor)
-nano 02-docker-configuration/.env
-```
-
-**Essential Configuration:**
-```bash
-# Domain Configuration
-DOMAIN=your-domain.com
-SERVER_IP=192.168.0.100
-
-# Database Configuration
-POSTGRES_DB=prs_production
-POSTGRES_USER=prs_admin
-POSTGRES_PASSWORD=your_secure_password_here
-
-# Application Secrets (generate secure values)
-JWT_SECRET=your_jwt_secret_32_chars_minimum
-ENCRYPTION_KEY=your_encryption_key_32_chars
-OTP_KEY=your_otp_key_base64_encoded
-
-# Redis Configuration
-REDIS_PASSWORD=your_redis_password_here
-
-# External API (configure for your environment)
-CITYLAND_API_URL=https://your-api-endpoint.com
-CITYLAND_API_USERNAME=your_api_username
-CITYLAND_API_PASSWORD=your_api_password
-
-# SSL Configuration
-SSL_EMAIL=admin@your-domain.com
-```
-
-### Configuration
-
-```bash
-# Setup repository paths
-cp scripts/repo-config.example.sh scripts/repo-config.sh
-nano scripts/repo-config.sh
-```
-
-Update with your repository URLs:
-```bash
-export REPOS_BASE_DIR="/opt/prs"
-export BACKEND_REPO_NAME="prs-backend-a"
-export FRONTEND_REPO_NAME="prs-frontend-a"
-export BACKEND_REPO_URL="https://github.com/your-org/prs-backend-a.git"
-export FRONTEND_REPO_URL="https://github.com/your-org/prs-frontend-a.git"
-```
-
-## Step 3: Deployment (10 minutes)
-
-### Deployment Script
-
-```bash
-# Make script executable
-chmod +x scripts/deploy-onprem.sh
-
-# Deploy production environment
-./scripts/deploy-onprem.sh prod
-```
-
-The script will automatically:
-
-1. Validate environment and prerequisites
-2. Clone application repositories
-3. Build Docker images
-4. Setup TimescaleDB with dual storage
-5. Configure SSL certificates
-6. Start all services
-7. Run health checks
-
-### Deployment
-
-```bash
-# Watch deployment progress
-docker-compose -f 02-docker-configuration/docker-compose.onprem.yml logs -f
-
-# Check service status
-docker-compose -f 02-docker-configuration/docker-compose.onprem.yml ps
-```
-
-Expected services:
-```
-NAME                          STATUS
-prs-onprem-nginx             Up
-prs-onprem-frontend          Up  
-prs-onprem-backend           Up
-prs-onprem-postgres-timescale Up (healthy)
-prs-onprem-redis             Up (healthy)
-prs-onprem-redis-worker      Up
-prs-onprem-adminer           Up
-prs-onprem-prometheus        Up
-prs-onprem-grafana           Up
-```
-
-## Step 4: Validation (5 minutes)
-
-### Checks
-
-```bash
-# Run comprehensive health check
-./scripts/system-health-check.sh
-```
-
-### Verification
-
-```bash
-# Test web interface
-curl -k https://your-domain.com/
-
-# Test API health
-curl -k https://your-domain.com/api/health
-
-# Test database connectivity
-docker exec prs-onprem-postgres-timescale pg_isready -U prs_admin
-
-# Test Redis connectivity
-docker exec prs-onprem-redis redis-cli -a $REDIS_PASSWORD ping
-```
-
-### Management Interfaces
-
-| Service | URL | Purpose |
-|---------|-----|---------|
-| **Main Application** | `https://your-domain.com` | PRS web interface |
-| **Database Admin** | `https://your-domain.com:8080` | Adminer database management |
-| **Monitoring** | `https://your-domain.com:3001` | Grafana dashboards |
-| **Container Management** | `https://your-domain.com:9000` | Portainer interface |
-| **Metrics** | `https://your-domain.com:9090` | Prometheus metrics |
-
-## Post-Deployment Setup
-
-### Initialization
-
-```bash
-# Access backend container
-docker exec -it prs-onprem-backend bash
-
-# Run database migrations
-npm run migrate
-
-# Setup TimescaleDB hypertables
-npm run setup:timescaledb
-
-# Create initial admin user
-npm run create:admin
-```
-
-### Monitoring
-
-```bash
-# Import Grafana dashboards
-docker exec -it prs-onprem-grafana grafana-cli admin reset-admin-password admin
-
-# Access Grafana at https://your-domain.com:3001
-# Login: admin / admin (change on first login)
-```
-
-### Automated Backups
-
-```bash
-# Configure backup script
-cp scripts/backup-maintenance.sh.example scripts/backup-maintenance.sh
-chmod +x scripts/backup-maintenance.sh
-
-# Test backup
-./scripts/backup-maintenance.sh
-
-# Add to crontab for daily execution
-echo "0 2 * * * /opt/prs-deployment/scripts/backup-maintenance.sh" | crontab -
-```
-
-## Quick Configuration
-
-### Certificate Setup
-
-**Option 1: Automatic (Let's Encrypt)**
-```bash
-# Run SSL automation
-./scripts/ssl-automation-citylandcondo.sh
-```
-
-**Option 2: Manual (Existing Certificates)**
-```bash
-# Copy certificates to SSL directory
-sudo cp /path/to/certificate.crt 02-docker-configuration/ssl/
-sudo cp /path/to/private.key 02-docker-configuration/ssl/
-sudo cp /path/to/ca-bundle.crt 02-docker-configuration/ssl/
-
-# Restart nginx to load certificates
-docker-compose -f 02-docker-configuration/docker-compose.onprem.yml restart nginx
-```
-
-### Tuning
-
-```bash
-# Optimize PostgreSQL for your workload
-docker exec -it prs-onprem-postgres-timescale psql -U prs_admin -d prs_production
-
--- Create tablespaces for dual storage
-CREATE TABLESPACE ssd_hot LOCATION '/mnt/ssd/postgresql-hot';
-CREATE TABLESPACE hdd_cold LOCATION '/mnt/hdd/postgresql-cold';
-
--- Setup data movement policies
-SELECT add_move_chunk_policy('notifications', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('audit_logs', INTERVAL '30 days', 'hdd_cold');
-```
-
-## Troubleshooting Quick Fixes
-
-### Won't Start
-
-```bash
-# Check service logs
-docker-compose -f 02-docker-configuration/docker-compose.onprem.yml logs service-name
-
-# Restart specific service
-docker-compose -f 02-docker-configuration/docker-compose.onprem.yml restart service-name
-
-# Restart all services
-docker-compose -f 02-docker-configuration/docker-compose.onprem.yml restart
-```
-
-### Connection Issues
-
-```bash
-# Check database status
-docker exec prs-onprem-postgres-timescale pg_isready
-
-# Reset database connection
-docker-compose -f 02-docker-configuration/docker-compose.onprem.yml restart postgres backend
-```
-
-### Certificate Issues
-
-```bash
-# Check certificate validity
-openssl x509 -in 02-docker-configuration/ssl/certificate.crt -text -noout
-
-# Regenerate certificates
-./scripts/ssl-automation-citylandcondo.sh --force
-```
-
-### Issues
-
-```bash
-# Check storage usage
-df -h /mnt/ssd /mnt/hdd
-
-# Check storage permissions
-ls -la /mnt/ssd/ /mnt/hdd/
-
-# Fix permissions if needed
-sudo chown -R 999:999 /mnt/ssd/postgresql-hot /mnt/hdd/postgresql-cold
-```
-
-## Success Validation
-
-### Benchmarks
-
-```bash
-# Test application performance
-ab -n 100 -c 10 https://your-domain.com/
-
-# Test API performance
-ab -n 100 -c 5 https://your-domain.com/api/health
-
-# Test database performance
-docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-SELECT COUNT(*) FROM notifications WHERE created_at >= NOW() - INTERVAL '30 days';
-"
-```
-
-### Results
-
-| Metric | Target | Validation |
-|--------|--------|------------|
-| **Web Response** | <200ms | Fast page loads |
-| **API Response** | <100ms | Quick API calls |
-| **Database Query** | <50ms | Optimized queries |
-| **SSL Certificate** | Valid | HTTPS working |
-| **All Services** | Running | No failed containers |
-
-## Deployment Complete!
-
-Your PRS system is now running in production with:
-
-- **Dual Storage**: SSD for performance, HDD for capacity
-- **TimescaleDB**: Zero-deletion policy with automatic tiering
-- **SSL Security**: HTTPS encryption enabled
-- **Monitoring**: Grafana dashboards and Prometheus metrics
-- **Automated Backups**: Daily backup procedures
-- **High Performance**: Optimized for 100+ concurrent users
-
-## Next Steps
-
-1. **[Configure Monitoring](../configuration/monitoring.md)** - Setup alerts and dashboards
-2. **[Security Hardening](../configuration/security.md)** - Additional security measures
-3. **[Backup Procedures](../operations/backup.md)** - Comprehensive backup strategy
-4. **[Daily Operations](../operations/daily.md)** - Routine maintenance tasks
+!!! info "Office Network Ready"
+    Optimized for office environments with GoDaddy SSL support and network-restricted monitoring access.
 
 ---
 
-!!! success "Production Ready"
-    Your PRS system is now ready for production use with enterprise-grade performance and reliability.
+## Step 1: Configuration (10-15 minutes)
 
-!!! tip "Support"
-    For additional help, see [Troubleshooting](../deployment/troubleshooting.md) or [Support](../appendix/support.md).
+### Prerequisites
+
+!!! warning "Complete Prerequisites First"
+    **[📖 Read Prerequisites Guide](prerequisites.md)** - Essential server setup required before proceeding.
+
+**Critical requirements verified by deploy script:**
+- **Ubuntu 24.04 LTS** server (22.04 supported)
+- **16GB+ RAM** (checked by script)
+- **Storage mounts** `/mnt/ssd` and `/mnt/hdd` (required)
+- **Non-root user** with sudo access (script fails if root)
+- **Domain name** configured (e.g., prs.citylandcondo.com)
+- **Network connectivity** and static IP in 192.168.0.0/20 range
+
+**Quick verification:**
+```bash
+# Run this to check if you're ready
+./check-prerequisites.sh
+```
+
+### Quick Configuration
+
+```bash
+# Navigate to the PRS deployment directory
+cd /opt/prs-deployment/scripts
+
+# Run the configuration helper
+./quick-setup-helper.sh
+```
+
+The helper will prompt you for:
+- **Domain name** (e.g., prs.citylandcondo.com)
+- **Admin email** for notifications
+- **SSL method** (GoDaddy/Let's Encrypt/Self-signed)
+- **Database passwords** (auto-generated)
+- **NAS settings** (optional)
+
+!!! tip "GoDaddy SSL"
+    If your domain is `*.citylandcondo.com`, the system will automatically use the existing GoDaddy SSL automation.
+
+---
+
+## Step 2: Deployment (1-2 hours)
+
+### Run the Deployment
+
+The proven `deploy-onprem.sh` script handles the complete deployment:
+
+```bash
+# Run the complete deployment (1-2 hours)
+sudo ./deploy-onprem.sh deploy
+```
+
+This **idempotent** command will:
+- **Install all dependencies** (Docker, packages, etc.)
+- **Configure storage** (SSD/HDD setup with proper permissions)
+- **Set up SSL certificates** (self-signed initially)
+- **Configure firewall** for office network access (192.168.0.0/20)
+- **Clone and build** application repositories
+- **Deploy all services** (PostgreSQL+TimescaleDB, Redis, Nginx, etc.)
+- **Initialize database** and create admin user
+- **Start monitoring** services (Grafana, Prometheus, Node Exporter)
+
+!!! info "Idempotent Design"
+    The script can be run multiple times safely. It will skip completed steps and only perform necessary changes.
+
+### Monitor Progress
+
+```bash
+# Check what's been completed
+./deploy-onprem.sh check-state
+
+# Watch service status
+watch docker ps
+
+# View deployment logs
+tail -f /var/log/prs-deploy.log
+
+# Check specific service logs
+docker logs prs-onprem-backend --tail 50
+docker logs prs-onprem-postgres-timescale --tail 50
+```
+
+### Verify Deployment
+
+After deployment completes:
+
+```bash
+# Check comprehensive system status
+./deploy-onprem.sh status
+
+# Run health check
+./deploy-onprem.sh health
+
+# Test application access
+curl -k https://your-domain.com/api/health
+
+# Connect to database (optional)
+./deploy-onprem.sh db-connect
+```
+
+### Optional: GoDaddy SSL Setup
+
+If your domain is `*.citylandcondo.com`, set up proper SSL certificates:
+
+```bash
+# Run GoDaddy SSL automation
+./ssl-automation-citylandcondo.sh
+
+# Restart services to use new certificates
+./deploy-onprem.sh restart
+```
+
+---
+
+## Step 3: Automation Setup (15-30 minutes)
+
+### Set Up Backup Automation
+
+```bash
+# Configure automated backups
+./setup-backup-automation.sh
+```
+
+This sets up:
+- **Daily database backups** at 2:00 AM
+- **Daily application backups** at 3:00 AM
+- **Daily backup verification** at 4:00 AM
+- **Weekly maintenance** on Sundays at 1:00 AM
+- **NAS connectivity monitoring** (if configured)
+
+### Set Up Monitoring Automation
+
+```bash
+# Configure automated monitoring
+./setup-monitoring-automation.sh
+```
+
+This sets up:
+- **System performance monitoring** every 5 minutes
+- **Application health checks** every 10 minutes
+- **Database performance monitoring** every 15 minutes
+- **Daily monitoring reports** at 8:00 AM
+- **Security hardening** (fail2ban, automatic updates)
+
+---
+
+## 🎉 Deployment Complete!
+
+### Access Your System
+
+| Service | URL | Access |
+|---------|-----|--------|
+| **Main Application** | `https://your-domain.com` | Public |
+| **Grafana Monitoring** | `http://server-ip:3000` | Office Network Only |
+| **Adminer (Database)** | `http://server-ip:8080` | Office Network Only |
+| **Portainer (Containers)** | `http://server-ip:9000` | Office Network Only |
+
+!!! note "Service Access"
+    The deploy script shows exact URLs after completion. Use `./deploy-onprem.sh status` to see current access information.
+
+### System Status
+
+Your PRS system now includes:
+- ✅ **High-performance application stack**
+- ✅ **Enterprise-grade security** with SSL/TLS
+- ✅ **Automated backup system** with optional NAS integration
+- ✅ **Comprehensive monitoring** and alerting
+- ✅ **Automated maintenance** procedures
+- ✅ **Office network security** configuration
+
+### Daily Operations
+
+```bash
+# Check system health
+./system-health-check.sh
+
+# View service status
+docker ps
+
+# Check backup status
+ls -la /mnt/hdd/postgres-backups/daily/
+
+# View monitoring logs
+tail -f /var/log/prs-monitoring.log
+
+# Manual backup
+./backup-full.sh
+```
+
+### Maintenance Schedule
+
+| Task | Frequency | Automated |
+|------|-----------|-----------|
+| Database Backup | Daily 2:00 AM | ✅ |
+| Application Backup | Daily 3:00 AM | ✅ |
+| Backup Verification | Daily 4:00 AM | ✅ |
+| System Monitoring | Every 5-15 min | ✅ |
+| Weekly Maintenance | Sunday 1:00 AM | ✅ |
+| Security Updates | Weekly | ✅ |
+
+---
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### Configuration Helper Issues
+
+**Problem: Permission denied**
+```bash
+# Make sure script is executable
+chmod +x ./quick-setup-helper.sh
+sudo ./quick-setup-helper.sh
+```
+
+**Problem: Domain not accessible**
+- Check DNS configuration
+- Verify firewall allows ports 80/443
+- For office networks, ensure domain points to server IP
+
+#### Deployment Issues
+
+**Problem: deploy-onprem.sh fails**
+```bash
+# Check what's been completed
+./deploy-onprem.sh check-state
+
+# View deployment status
+./deploy-onprem.sh status
+
+# Check Docker status
+sudo systemctl status docker
+
+# Reset deployment state if needed
+./deploy-onprem.sh reset-state
+```
+
+**Problem: Services won't start**
+```bash
+# Check comprehensive status
+./deploy-onprem.sh status
+
+# View service logs
+docker logs prs-onprem-backend --tail 100
+docker logs prs-onprem-postgres-timescale --tail 100
+
+# Restart specific services
+./deploy-onprem.sh restart
+
+# Stop and start services
+./deploy-onprem.sh stop
+./deploy-onprem.sh start
+```
+
+#### SSL Certificate Issues
+
+**Problem: GoDaddy SSL automation fails**
+```bash
+# Check if domain is correct
+echo $DOMAIN
+
+# Manually run SSL script
+./ssl-automation-citylandcondo.sh
+
+# Fall back to self-signed
+# Edit .env file and set SSL_METHOD=3
+```
+
+**Problem: Let's Encrypt fails**
+```bash
+# Check domain DNS
+nslookup your-domain.com
+
+# Ensure ports 80/443 are open
+sudo ufw status
+
+# Try manual certificate generation
+sudo certbot certonly --standalone -d your-domain.com
+```
+
+#### NAS Backup Issues
+
+**Problem: NAS connectivity fails**
+```bash
+# Test NAS connection
+./test-nas-connection.sh
+
+# Check network connectivity
+ping your-nas-ip
+
+# Verify credentials in nas-config.sh
+cat nas-config.sh
+```
+
+#### Performance Issues
+
+**Problem: System running slowly**
+```bash
+# Check system resources
+htop
+df -h
+
+# Check Docker resource usage
+docker stats
+
+# Optimize database
+docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -c "VACUUM ANALYZE;"
+```
+
+### Getting Help
+
+#### Log Locations
+
+| Component | Log Location |
+|-----------|--------------|
+| **Deployment** | `/var/log/prs-deploy.log` |
+| **Application** | `docker logs prs-onprem-backend` |
+| **Database** | `docker logs prs-onprem-postgres-timescale` |
+| **Backup** | `/var/log/prs-backup.log` |
+| **Monitoring** | `/var/log/prs-monitoring.log` |
+
+#### Useful Commands
+
+```bash
+# Comprehensive system status
+./deploy-onprem.sh status
+
+# Check deployment state
+./deploy-onprem.sh check-state
+
+# Run health checks
+./deploy-onprem.sh health
+
+# Connect to database
+./deploy-onprem.sh db-connect
+
+# View all available commands
+./deploy-onprem.sh help
+
+# Check service logs
+docker logs prs-onprem-backend --tail 50
+
+# Manual backup test
+./backup-full.sh
+
+# System resource usage
+htop && df -h
+```
+
+#### Reset and Restart
+
+**Service restart:**
+```bash
+# Restart all services
+./deploy-onprem.sh restart
+
+# Stop and start services
+./deploy-onprem.sh stop
+./deploy-onprem.sh start
+```
+
+**Complete reset (if needed):**
+```bash
+# Reset deployment state
+./deploy-onprem.sh reset-state
+
+# Clean Docker resources
+docker system prune -f
+
+# Re-run deployment
+./deploy-onprem.sh deploy
+```
+
+---
+
+!!! success "Quick Start Complete"
+    🎉 **Your PRS system is now fully deployed and operational!**
+
+    **What you accomplished:**
+    - ✅ Complete enterprise PRS application stack
+    - ✅ SSL/TLS security with automated certificate management
+    - ✅ Enterprise backup system with optional NAS integration
+    - ✅ Comprehensive monitoring with Grafana dashboards
+    - ✅ Automated maintenance and health checks
+    - ✅ Office network security configuration
+
+    **Total deployment time: 2-3 hours**
+
+    Your system is production-ready and optimized for office network use!
+
+!!! tip "Next Steps"
+    1. **Access Grafana** at `:3000` to configure monitoring dashboards
+    2. **Test backup system** by running `./backup-full.sh`
+    3. **Create user accounts** in the application
+    4. **Configure email notifications** for alerts
+    5. **Review security settings** and adjust firewall rules as needed
+
+!!! info "Support Resources"
+    - **Documentation**: `/opt/prs-deployment/docs/`
+    - **Scripts**: `/opt/prs-deployment/scripts/`
+    - **Configuration**: `/opt/prs-deployment/02-docker-configuration/`
+    - **Logs**: `/var/log/prs-*.log`

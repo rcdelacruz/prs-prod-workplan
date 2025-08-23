@@ -13,10 +13,41 @@ This documentation provides complete guidance for deploying, configuring, and ma
 - **Enterprise Security**: SSL/TLS, security hardening, and monitoring
 - **High Performance**: Optimized for 100+ concurrent users
 - **Automated Operations**: Backup, monitoring, and maintenance automation
+- **NAS Integration**: Enterprise backup with network storage support
+- **One-Day Deployment**: Complete setup in 6-8 hours with automation
 
-## Start
+## Quick Start Options
 
-Get your PRS system up and running in production:
+### 🚀 Quick Deployment (Recommended)
+
+**Complete enterprise-grade deployment in 2-3 hours:**
+
+!!! danger "Prerequisites First"
+    **[📋 Prerequisites Guide](getting-started/prerequisites.md)** - Essential server setup required before deployment
+
+**[📖 Quick Start Guide](getting-started/quick-start.md)** - Simple 3-step process using proven scripts
+
+```bash
+# Prerequisites check:
+./check-prerequisites.sh
+
+# Simple 3-step process:
+1. Configure: ./quick-setup-helper.sh
+2. Deploy: sudo ./deploy-onprem.sh deploy
+3. Automate: ./setup-backup-automation.sh && ./setup-monitoring-automation.sh
+```
+
+**What you get:**
+- ✅ Complete PRS application stack
+- ✅ SSL/TLS security (GoDaddy/Let's Encrypt/Self-signed)
+- ✅ Enterprise backup with NAS integration
+- ✅ Grafana monitoring and alerting
+- ✅ Automated maintenance and health checks
+- ✅ Office network security configuration
+
+### 📋 Manual Deployment
+
+**Step-by-step deployment for custom requirements:**
 
 1. **[Prerequisites](getting-started/prerequisites.md)** - System requirements and preparation
 2. **[Hardware Setup](hardware/requirements.md)** - Configure dual storage and network
