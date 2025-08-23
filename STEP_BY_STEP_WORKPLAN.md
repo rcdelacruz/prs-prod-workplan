@@ -23,7 +23,7 @@ This is a detailed, step-by-step workplan for deploying PRS from EC2 to on-premi
 - [ ] **Deliverable**: Storage configuration confirmed
 
 #### Step 1.3: Network Verification
-- [ ] **Task**: Verify server IP 192.168.16.100 is assigned
+- [ ] **Task**: Verify server IP 192.168.0.100 is assigned
 - [ ] **Command**: `ip addr show` and `ping 192.168.1.1`
 - [ ] **Expected**: Static IP assigned, internal network accessible
 - [ ] **Deliverable**: Network configuration document
@@ -142,7 +142,7 @@ This is a detailed, step-by-step workplan for deploying PRS from EC2 to on-premi
 - [ ] **Required Updates**:
   - [ ] All passwords (7 generated secrets)
   - [ ] DOMAIN=prs.client-domain.com
-  - [ ] SERVER_IP=192.168.16.100
+  - [ ] SERVER_IP=192.168.0.100
   - [ ] ROOT_USER_EMAIL=admin@client-domain.com
   - [ ] SMTP settings (if email alerts needed)
 - [ ] **Expected**: All variables configured correctly
@@ -233,7 +233,7 @@ This is a detailed, step-by-step workplan for deploying PRS from EC2 to on-premi
 - [ ] **Task**: Deploy Nginx with SSL termination
 - [ ] **Command**: `docker compose -f docker-compose.onprem.yml up -d nginx`
 - [ ] **Expected**: Nginx container running
-- [ ] **Validation**: `curl -f https://192.168.16.100/`
+- [ ] **Validation**: `curl -f https://192.168.0.100/`
 - [ ] **Deliverable**: HTTPS access working
 
 #### Step 9.2: Start Monitoring Services
@@ -241,8 +241,8 @@ This is a detailed, step-by-step workplan for deploying PRS from EC2 to on-premi
 - [ ] **Command**: `docker compose -f docker-compose.onprem.yml --profile monitoring up -d`
 - [ ] **Expected**: Monitoring containers running
 - [ ] **Validation**:
-  - `curl -f http://192.168.16.100:9090` (Prometheus)
-  - `curl -f http://192.168.16.100:3001` (Grafana)
+  - `curl -f http://192.168.0.100:9090` (Prometheus)
+  - `curl -f http://192.168.0.100:3001` (Grafana)
 - [ ] **Deliverable**: Monitoring stack operational
 
 ---
@@ -275,7 +275,7 @@ This is a detailed, step-by-step workplan for deploying PRS from EC2 to on-premi
   # Install Apache Bench
   sudo apt install -y apache2-utils
   # Test with 10 concurrent users
-  ab -n 100 -c 10 https://192.168.16.100/
+  ab -n 100 -c 10 https://192.168.0.100/
   ```
 - [ ] **Expected**: Response time < 200ms, no errors
 - [ ] **Deliverable**: Performance test results
@@ -329,7 +329,7 @@ This is a detailed, step-by-step workplan for deploying PRS from EC2 to on-premi
 #### Step 12.2: Monitoring Configuration
 - [ ] **Task**: Configure Grafana dashboards and alerts
 - [ ] **Actions**:
-  - [ ] Login to Grafana (http://192.168.16.100:3001)
+  - [ ] Login to Grafana (http://192.168.0.100:3001)
   - [ ] Import system dashboard
   - [ ] Configure email alerts
   - [ ] Test alert notifications
@@ -394,7 +394,7 @@ If any step fails critically:
 free -h | grep "Mem:" | awk '{print $2}'  # Should show ~16G
 df -h /mnt/ssd | awk 'NR==2 {print $4}'   # Should show ~400G+ available
 df -h /mnt/hdd | awk 'NR==2 {print $4}'   # Should show ~2T+ available
-ip addr show | grep "192.168.16.100"      # Should show assigned IP
+ip addr show | grep "192.168.0.100"      # Should show assigned IP
 
 # Network Check
 ping -c 1 192.168.1.1                     # Should succeed
@@ -411,17 +411,17 @@ sudo ufw status                           # Should show "active"
 ```bash
 # Service Health Check
 docker ps | wc -l                         # Should show 11+ containers
-curl -f https://192.168.16.100/           # Should return 200
-curl -f https://192.168.16.100/api/health # Should return 200
-curl -f http://192.168.16.100:3001/       # Grafana should load
-curl -f http://192.168.16.100:9090/       # Prometheus should load
+curl -f https://192.168.0.100/           # Should return 200
+curl -f https://192.168.0.100/api/health # Should return 200
+curl -f http://192.168.0.100:3001/       # Grafana should load
+curl -f http://192.168.0.100:9090/       # Prometheus should load
 
 # Database Check
 docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -c "SELECT version();"
 docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -c "SELECT timescaledb_version();"
 
 # Performance Check
-ab -n 10 -c 2 https://192.168.16.100/     # Should complete without errors
+ab -n 10 -c 2 https://192.168.0.100/     # Should complete without errors
 ```
 
 ### **Final Go-Live Checklist**

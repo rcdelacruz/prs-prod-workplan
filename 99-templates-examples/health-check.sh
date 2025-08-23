@@ -62,12 +62,12 @@ check_start() {
 # System health checks
 check_system_resources() {
     log_info "Checking system resources..."
-    
+
     # CPU Usage Check
     check_start
     CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//')
     CPU_USAGE_INT=${CPU_USAGE%.*}
-    
+
     if [ "$CPU_USAGE_INT" -gt "$CPU_CRITICAL_THRESHOLD" ]; then
         log_error "CPU usage critical: ${CPU_USAGE}%"
     elif [ "$CPU_USAGE_INT" -gt "$CPU_WARNING_THRESHOLD" ]; then
@@ -75,14 +75,14 @@ check_system_resources() {
     else
         log_success "CPU usage normal: ${CPU_USAGE}%"
     fi
-    
+
     # Memory Usage Check
     check_start
     MEMORY_INFO=$(free | grep Mem)
     TOTAL_MEM=$(echo $MEMORY_INFO | awk '{print $2}')
     USED_MEM=$(echo $MEMORY_INFO | awk '{print $3}')
     MEMORY_USAGE=$((USED_MEM * 100 / TOTAL_MEM))
-    
+
     if [ "$MEMORY_USAGE" -gt "$MEMORY_CRITICAL_THRESHOLD" ]; then
         log_error "Memory usage critical: ${MEMORY_USAGE}%"
     elif [ "$MEMORY_USAGE" -gt "$MEMORY_WARNING_THRESHOLD" ]; then
@@ -90,13 +90,13 @@ check_system_resources() {
     else
         log_success "Memory usage normal: ${MEMORY_USAGE}%"
     fi
-    
+
     # Load Average Check
     check_start
     LOAD_AVG=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | sed 's/,//')
     LOAD_AVG_INT=${LOAD_AVG%.*}
     CPU_CORES=$(nproc)
-    
+
     if [ "$LOAD_AVG_INT" -gt $((CPU_CORES * 2)) ]; then
         log_error "Load average high: $LOAD_AVG (cores: $CPU_CORES)"
     elif [ "$LOAD_AVG_INT" -gt "$CPU_CORES" ]; then
@@ -109,7 +109,7 @@ check_system_resources() {
 # Storage health checks
 check_storage() {
     log_info "Checking storage health..."
-    
+
     # SSD Storage Check
     check_start
     if [ -d "/mnt/ssd" ]; then
@@ -124,7 +124,7 @@ check_storage() {
     else
         log_error "SSD mount point not found"
     fi
-    
+
     # HDD Storage Check
     check_start
     if [ -d "/mnt/hdd" ]; then
@@ -139,7 +139,7 @@ check_storage() {
     else
         log_error "HDD mount point not found"
     fi
-    
+
     # Check disk I/O
     check_start
     if command -v iostat >/dev/null 2>&1; then
@@ -158,7 +158,7 @@ check_storage() {
 # Docker health checks
 check_docker() {
     log_info "Checking Docker services..."
-    
+
     # Docker daemon check
     check_start
     if docker info >/dev/null 2>&1; then
@@ -167,10 +167,10 @@ check_docker() {
         log_error "Docker daemon not running"
         return 1
     fi
-    
+
     # Container health checks
     CONTAINERS=("prs-onprem-nginx" "prs-onprem-backend" "prs-onprem-frontend" "prs-onprem-postgres-timescale" "prs-onprem-redis")
-    
+
     for container in "${CONTAINERS[@]}"; do
         check_start
         if docker ps | grep -q "$container"; then
@@ -190,7 +190,7 @@ check_docker() {
 # Application health checks
 check_application() {
     log_info "Checking application health..."
-    
+
     # Backend API health check
     check_start
     if curl -f -s http://localhost:4000/health >/dev/null 2>&1; then
@@ -198,23 +198,23 @@ check_application() {
     else
         log_error "Backend API not responding"
     fi
-    
+
     # Frontend health check
     check_start
-    if curl -f -s http://192.168.16.100/ >/dev/null 2>&1; then
+    if curl -f -s http://192.168.0.100/ >/dev/null 2>&1; then
         log_success "Frontend responding"
     else
         log_error "Frontend not responding"
     fi
-    
+
     # HTTPS health check
     check_start
-    if curl -f -s -k https://192.168.16.100/ >/dev/null 2>&1; then
+    if curl -f -s -k https://192.168.0.100/ >/dev/null 2>&1; then
         log_success "HTTPS responding"
     else
         log_error "HTTPS not responding"
     fi
-    
+
     # Database connectivity check
     check_start
     if docker exec prs-onprem-postgres-timescale pg_isready -U prs_user >/dev/null 2>&1; then
@@ -222,7 +222,7 @@ check_application() {
     else
         log_error "Database not responding"
     fi
-    
+
     # Redis connectivity check
     check_start
     if docker exec prs-onprem-redis redis-cli ping >/dev/null 2>&1; then
@@ -235,7 +235,7 @@ check_application() {
 # Network health checks
 check_network() {
     log_info "Checking network connectivity..."
-    
+
     # Internal network connectivity
     check_start
     if ping -c 1 192.168.1.1 >/dev/null 2>&1; then
@@ -243,7 +243,7 @@ check_network() {
     else
         log_warning "Internal network connectivity issues"
     fi
-    
+
     # External network connectivity
     check_start
     if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
@@ -251,7 +251,7 @@ check_network() {
     else
         log_warning "External network connectivity issues"
     fi
-    
+
     # DNS resolution check
     check_start
     if nslookup google.com >/dev/null 2>&1; then
@@ -259,7 +259,7 @@ check_network() {
     else
         log_warning "DNS resolution issues"
     fi
-    
+
     # Port accessibility check
     check_start
     PORTS=(80 443 8080 3001 9000 9090)
@@ -269,7 +269,7 @@ check_network() {
             ((PORTS_OK++))
         fi
     done
-    
+
     if [ "$PORTS_OK" -eq "${#PORTS[@]}" ]; then
         log_success "All required ports accessible"
     else
@@ -280,7 +280,7 @@ check_network() {
 # Security checks
 check_security() {
     log_info "Checking security status..."
-    
+
     # Firewall status check
     check_start
     if ufw status | grep -q "Status: active"; then
@@ -288,7 +288,7 @@ check_security() {
     else
         log_warning "Firewall not active"
     fi
-    
+
     # SSL certificate check
     check_start
     if [ -f "/opt/prs/ssl/server.crt" ]; then
@@ -296,7 +296,7 @@ check_security() {
         CERT_EXPIRY_EPOCH=$(date -d "$CERT_EXPIRY" +%s)
         CURRENT_EPOCH=$(date +%s)
         DAYS_UNTIL_EXPIRY=$(( (CERT_EXPIRY_EPOCH - CURRENT_EPOCH) / 86400 ))
-        
+
         if [ "$DAYS_UNTIL_EXPIRY" -lt 7 ]; then
             log_error "SSL certificate expires in $DAYS_UNTIL_EXPIRY days"
         elif [ "$DAYS_UNTIL_EXPIRY" -lt 30 ]; then
@@ -307,7 +307,7 @@ check_security() {
     else
         log_error "SSL certificate not found"
     fi
-    
+
     # Check for failed login attempts
     check_start
     FAILED_LOGINS=$(grep "Failed password" /var/log/auth.log 2>/dev/null | grep "$(date '+%b %d')" | wc -l || echo 0)
@@ -321,7 +321,7 @@ check_security() {
 # Backup status check
 check_backups() {
     log_info "Checking backup status..."
-    
+
     # Check last daily backup
     check_start
     if [ -d "/mnt/ssd/backups/daily" ]; then
@@ -339,7 +339,7 @@ check_backups() {
     else
         log_error "Daily backup directory not found"
     fi
-    
+
     # Check backup storage usage
     check_start
     if [ -d "/mnt/hdd/backups" ]; then
@@ -353,9 +353,9 @@ check_backups() {
 # Generate health report
 generate_report() {
     log_info "Generating health check report..."
-    
+
     REPORT_FILE="/var/log/prs-health-report-$(date +%Y%m%d_%H%M%S).txt"
-    
+
     cat > "$REPORT_FILE" << EOF
 PRS On-Premises Health Check Report
 ==================================
@@ -398,15 +398,15 @@ EOF
     if [ $ERRORS -gt 0 ]; then
         echo "- CRITICAL: $ERRORS error(s) detected. Immediate attention required." >> "$REPORT_FILE"
     fi
-    
+
     if [ $WARNINGS -gt 0 ]; then
         echo "- WARNING: $WARNINGS warning(s) detected. Monitor closely." >> "$REPORT_FILE"
     fi
-    
+
     if [ $ERRORS -eq 0 ] && [ $WARNINGS -eq 0 ]; then
         echo "- All systems operating normally." >> "$REPORT_FILE"
     fi
-    
+
     log_success "Health report generated: $REPORT_FILE"
 }
 
@@ -428,7 +428,7 @@ main() {
     echo "========================================" | tee -a "$LOG_FILE"
     log_info "Starting PRS On-Premises Health Check - $(date)"
     echo "========================================" | tee -a "$LOG_FILE"
-    
+
     check_system_resources
     check_storage
     check_docker
@@ -436,11 +436,11 @@ main() {
     check_network
     check_security
     check_backups
-    
+
     echo "========================================" | tee -a "$LOG_FILE"
     generate_report
     send_alerts
-    
+
     # Exit with appropriate code
     if [ $ERRORS -gt 0 ]; then
         log_error "Health check completed with $ERRORS error(s) and $WARNINGS warning(s)"

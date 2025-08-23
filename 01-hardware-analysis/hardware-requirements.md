@@ -4,7 +4,7 @@
 
 ### Client Hardware Specifications
 - **RAM**: 16 GB (4x improvement over EC2 4GB)
-- **Storage**: 
+- **Storage**:
   - **SSD**: 470 GB RAID1 (23x improvement over EC2 20GB)
   - **HDD**: 2,400 TB RAID5 (120,000x improvement)
 - **Network**: 1 Gbps interface
@@ -58,7 +58,7 @@ HDD (2,400 TB RAID5) - Cold Data:
 ### Network Optimization
 ```
 Internal Network: 192.168.0.0/20
-├── Server IP: 192.168.16.100
+├── Server IP: 192.168.0.100
 ├── Service Network: 192.168.100.0/24
 ├── Firewall: Hardware-managed
 └── DNS: Internal + External fallback
@@ -219,7 +219,7 @@ Uptime:
 # SSD Performance Test
 sudo fio --name=ssd-test --filename=/mnt/ssd/test --size=10G --rw=randwrite --bs=4k --numjobs=4 --time_based --runtime=60
 
-# HDD Performance Test  
+# HDD Performance Test
 sudo fio --name=hdd-test --filename=/mnt/hdd/test --size=10G --rw=write --bs=1M --numjobs=1 --time_based --runtime=60
 
 # Network Performance Test
@@ -254,7 +254,7 @@ pqos -m all:0-3
 
 ---
 
-**Document Version**: 1.0  
-**Created**: 2025-08-13  
-**Last Updated**: 2025-08-13  
+**Document Version**: 1.0
+**Created**: 2025-08-13
+**Last Updated**: 2025-08-13
 **Status**: Production Ready

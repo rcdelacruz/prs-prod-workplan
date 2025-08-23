@@ -10,8 +10,8 @@ services:
     restart: unless-stopped
     ports:
       # Bind to internal network interface for client access
-      - "${SERVER_IP:-192.168.16.100}:${HTTP_PORT:-80}:80"
-      - "${SERVER_IP:-192.168.16.100}:${HTTPS_PORT:-443}:443"
+      - "${SERVER_IP:-192.168.0.100}:${HTTP_PORT:-80}:80"
+      - "${SERVER_IP:-192.168.0.100}:${HTTPS_PORT:-443}:443"
     logging:
       driver: "json-file"
       options:
@@ -32,7 +32,7 @@ services:
       - frontend
     networks:
       prs_onprem_network:
-        ipv4_address: 192.168.100.5
+        ipv4_address: 172.20.0.5
     healthcheck:
       test: ["CMD", "nginx", "-t"]
       interval: 30s
@@ -164,7 +164,7 @@ services:
         condition: service_healthy
     networks:
       prs_onprem_network:
-        ipv4_address: 192.168.100.20
+        ipv4_address: 172.20.0.20
     healthcheck:
       test: ["CMD-SHELL", "node -e \"const http = require('http'); const req = http.request({hostname: 'localhost', port: 4000, path: '/health', method: 'GET', timeout: 5000}, (res) => process.exit(res.statusCode < 500 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();\""]
       interval: 30s
@@ -198,7 +198,7 @@ services:
       - VITE_APP_ENABLE_DEVTOOLS=${VITE_APP_ENABLE_DEVTOOLS:-false}
     networks:
       prs_onprem_network:
-        ipv4_address: 192.168.100.15
+        ipv4_address: 172.20.0.15
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:80/ || exit 1"]
       interval: 30s
@@ -235,8 +235,8 @@ services:
       -c random_page_cost=1.1
       -c effective_io_concurrency=${POSTGRES_EFFECTIVE_IO_CONCURRENCY:-200}
       -c ssl=${POSTGRES_SSL_MODE:-on}
-      -c ssl_cert_file=${POSTGRES_SSL_CERT_FILE:-/etc/ssl/certs/server.crt}
-      -c ssl_key_file=${POSTGRES_SSL_KEY_FILE:-/etc/ssl/private/server.key}
+      -c ssl_cert_file=/etc/ssl/certs/server.crt
+      -c ssl_key_file=/etc/ssl/certs/server.key
       -c log_statement=${POSTGRES_LOG_STATEMENT:-mod}
       -c log_min_duration_statement=${POSTGRES_LOG_MIN_DURATION:-1000}
       -c shared_preload_libraries=timescaledb
@@ -260,7 +260,6 @@ services:
     volumes:
       - database_data:/var/lib/postgresql/data
       - ./ssl:/etc/ssl/certs:ro
-      - ./ssl:/etc/ssl/private:ro
       # TimescaleDB dual storage configuration
       - /mnt/ssd/postgresql-hot:/mnt/ssd/postgresql-hot
       - /mnt/hdd/postgresql-cold:/mnt/hdd/postgresql-cold
@@ -269,7 +268,7 @@ services:
       - /mnt/hdd/postgres-backups:/var/lib/postgresql/backups
     networks:
       prs_onprem_network:
-        ipv4_address: 192.168.100.30
+        ipv4_address: 172.20.0.30
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 30s
@@ -313,7 +312,7 @@ services:
       - /mnt/hdd/redis-backups:/data/backups
     networks:
       prs_onprem_network:
-        ipv4_address: 192.168.100.35
+        ipv4_address: 172.20.0.35
     healthcheck:
       test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 30s
@@ -403,7 +402,7 @@ services:
         condition: service_healthy
     networks:
       prs_onprem_network:
-        ipv4_address: 192.168.100.40
+        ipv4_address: 172.20.0.40
     deploy:
       resources:
         limits:
@@ -417,13 +416,13 @@ services:
     restart: unless-stopped
     ports:
       # Bind to internal network for client access
-      - "${SERVER_IP:-192.168.16.100}:${ADMINER_PORT:-8080}:8080"
+      - "${SERVER_IP:-192.168.0.100}:${ADMINER_PORT:-8080}:8080"
     environment:
       - ADMINER_DEFAULT_SERVER=postgres
       - ADMINER_DESIGN=hydra
     networks:
       prs_onprem_network:
-        ipv4_address: 192.168.100.10
+        ipv4_address: 172.20.0.10
     depends_on:
       - postgres
     deploy:
@@ -449,7 +448,7 @@ services:
       - '--web.listen-address=0.0.0.0:9090'
     ports:
       # Bind to internal network for client access
-      - "${SERVER_IP:-192.168.16.100}:9090:9090"
+      - "${SERVER_IP:-192.168.0.100}:9090:9090"
     volumes:
       - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -459,7 +458,7 @@ services:
       - /mnt/hdd/prometheus-archive:/prometheus/archive
     networks:
       prs_onprem_network:
-        ipv4_address: 192.168.100.45
+        ipv4_address: 172.20.0.45
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/prometheus/-/healthy"]
       interval: 30s
@@ -480,7 +479,7 @@ services:
     restart: unless-stopped
     ports:
       # Bind to internal network for client access
-      - "${SERVER_IP:-192.168.16.100}:${GRAFANA_PORT:-3001}:3000"
+      - "${SERVER_IP:-192.168.0.100}:${GRAFANA_PORT:-3001}:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
@@ -492,7 +491,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - GF_DATABASE_TYPE=postgres
       - GF_DATABASE_HOST=postgres:5432
-      - GF_DATABASE_NAME=${POSTGRES_DB}
+      - GF_DATABASE_NAME=grafana
       - GF_DATABASE_USER=${POSTGRES_USER}
       - GF_DATABASE_PASSWORD=${POSTGRES_PASSWORD}
       - GF_DATABASE_SSL_MODE=disable
@@ -505,7 +504,7 @@ services:
       - /mnt/ssd/grafana-data:/var/lib/grafana/ssd
     networks:
       prs_onprem_network:
-        ipv4_address: 192.168.100.25
+        ipv4_address: 172.20.0.25
     depends_on:
       - prometheus
       - postgres
@@ -542,7 +541,7 @@ services:
       - /mnt/hdd:/host/hdd:ro
     networks:
       prs_onprem_network:
-        ipv4_address: 192.168.100.50
+        ipv4_address: 172.20.0.50
     deploy:
       resources:
         limits:
@@ -559,7 +558,7 @@ services:
     command: -H unix:///var/run/docker.sock
     ports:
       # Bind to internal network for client access
-      - "${SERVER_IP:-192.168.16.100}:${PORTAINER_PORT:-9000}:9000"
+      - "${SERVER_IP:-192.168.0.100}:${PORTAINER_PORT:-9000}:9000"
     environment:
       - PORTAINER_DOCKER_ENDPOINT=unix:///var/run/docker.sock
     volumes:
@@ -567,7 +566,7 @@ services:
       - portainer_data:/data
     networks:
       prs_onprem_network:
-        ipv4_address: 192.168.100.55
+        ipv4_address: 172.20.0.55
     healthcheck:
       test: ["CMD", "/portainer", "--help"]
       interval: 30s
@@ -586,8 +585,8 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: ${NETWORK_SUBNET:-192.168.100.0/24}
-          gateway: 192.168.100.1
+        - subnet: ${NETWORK_SUBNET:-192.168.0.0/20}
+          gateway: ${NETWORK_GATEWAY:-192.168.0.1}
     driver_opts:
       com.docker.network.bridge.name: prs-onprem-br0
       com.docker.network.bridge.enable_icc: "true"
@@ -598,11 +597,6 @@ networks:
 volumes:
   # Database volumes (Primary on SSD, backup on HDD)
   database_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/ssd/postgresql-data
 
   # Redis volumes (Primary on SSD, backup on HDD)
   redis_data:

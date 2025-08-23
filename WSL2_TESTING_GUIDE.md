@@ -63,7 +63,7 @@ df -h /mnt/ssd /mnt/hdd
 ip addr show eth0 | grep "inet " | awk '{print $2}' | cut -d/ -f1
 
 # Example output: 172.20.144.2
-# Use this IP instead of 192.168.16.100
+# Use this IP instead of 192.168.0.100
 ```
 
 ### **2. Update Environment for WSL2**
@@ -212,7 +212,7 @@ processors=4
 # Test storage performance
 # SSD simulation
 dd if=/dev/zero of=/mnt/ssd/test bs=1M count=100
-# HDD simulation  
+# HDD simulation
 dd if=/dev/zero of=/mnt/hdd/test bs=1M count=100
 
 # Clean up

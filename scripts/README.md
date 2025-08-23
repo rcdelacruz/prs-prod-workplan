@@ -15,7 +15,7 @@ These scripts provide automated deployment for PRS on-premises infrastructure, s
 
 # Other commands
 ./deploy-onprem.sh start      # Start services
-./deploy-onprem.sh stop       # Stop services  
+./deploy-onprem.sh stop       # Stop services
 ./deploy-onprem.sh restart    # Restart services
 ./deploy-onprem.sh status     # Show status
 ./deploy-onprem.sh health     # Run health check
@@ -43,7 +43,7 @@ nano 02-docker-configuration/.env
 ./scripts/deploy-onprem.sh deploy
 ```
 
-**That's it! Your PRS system will be running at https://192.168.16.100/**
+**That's it! Your PRS system will be running at https://192.168.0.100/**
 
 ## 📊 What `deploy-onprem.sh deploy` Does
 
@@ -91,11 +91,11 @@ docker logs prs-onprem-postgres-timescale
 
 After deployment, access these URLs:
 
-- **Application**: https://192.168.16.100/
-- **Grafana**: http://192.168.16.100:3001/
-- **Prometheus**: http://192.168.16.100:9090/
-- **Adminer**: http://192.168.16.100:8080/
-- **Portainer**: http://192.168.16.100:9000/
+- **Application**: https://192.168.0.100/
+- **Grafana**: http://192.168.0.100:3001/
+- **Prometheus**: http://192.168.0.100:9090/
+- **Adminer**: http://192.168.0.100:8080/
+- **Portainer**: http://192.168.0.100:9000/
 
 ## 🔐 Admin Credentials
 
