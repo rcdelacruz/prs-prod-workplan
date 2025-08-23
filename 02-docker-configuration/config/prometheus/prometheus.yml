@@ -113,7 +113,7 @@ scrape_configs:
   # Custom application health checks
   - job_name: 'health-checks'
     static_configs:
-      - targets: 
+      - targets:
         - 'backend:4000'
         - 'frontend:80'
         - 'postgres:5432'
@@ -132,13 +132,8 @@ scrape_configs:
         replacement: '${2}'
 
 # Storage configuration for on-premises
-storage:
-  tsdb:
-    path: /prometheus
-    retention.time: 30d
-    retention.size: 10GB
-    wal-compression: true
-    
+# Storage configuration is handled via command line arguments in docker-compose
+
 # Remote write configuration (optional - for long-term storage)
 # remote_write:
 #   - url: "http://prometheus-remote-storage:9201/write"

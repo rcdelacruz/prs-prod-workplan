@@ -1,7 +1,7 @@
 # 🚀 PRS On-Premises SPEED DEPLOYMENT - 4 HOURS MAX
 
 ## ⚡ **FOR EXPERIENCED DEVOPS/DEVELOPERS ONLY**
-**Total Time: 3-4 hours** for someone who knows Docker, PostgreSQL, and production deployments  
+**Total Time: 3-4 hours** for someone who knows Docker, PostgreSQL, and production deployments
 **Assumptions: You know what you're doing, hardware is ready**
 
 ---
@@ -96,13 +96,13 @@ docker compose -f docker-compose.onprem.yml up -d adminer portainer
 ```bash
 # Quick validation suite
 docker ps | wc -l  # Should show 11+
-curl -f https://192.168.16.100/ || echo "Frontend FAIL"
-curl -f https://192.168.16.100/api/health || echo "Backend FAIL"
-curl -f http://192.168.16.100:3001/ || echo "Grafana FAIL"
-curl -f http://192.168.16.100:9090/ || echo "Prometheus FAIL"
+curl -f https://192.168.0.100/ || echo "Frontend FAIL"
+curl -f https://192.168.0.100/api/health || echo "Backend FAIL"
+curl -f http://192.168.0.100:3001/ || echo "Grafana FAIL"
+curl -f http://192.168.0.100:9090/ || echo "Prometheus FAIL"
 
 # Quick performance test
-ab -n 100 -c 10 https://192.168.16.100/ | grep "Requests per second"
+ab -n 100 -c 10 https://192.168.0.100/ | grep "Requests per second"
 ```
 
 ---
@@ -141,10 +141,10 @@ timeout 300 /opt/prs/backup-scripts/daily-backup.sh || echo "Backup test complet
 
 # Create quick admin doc
 echo "=== PRS ADMIN ACCESS ===
-App: https://192.168.16.100/
-Grafana: http://192.168.16.100:3001/ (admin/$(grep GRAFANA_ADMIN_PASSWORD .env | cut -d= -f2))
-Adminer: http://192.168.16.100:8080/ (prs_user/$(grep POSTGRES_PASSWORD .env | cut -d= -f2))
-Portainer: http://192.168.16.100:9000/
+App: https://192.168.0.100/
+Grafana: http://192.168.0.100:3001/ (admin/$(grep GRAFANA_ADMIN_PASSWORD .env | cut -d= -f2))
+Adminer: http://192.168.0.100:8080/ (prs_user/$(grep POSTGRES_PASSWORD .env | cut -d= -f2))
+Portainer: http://192.168.0.100:9000/
 Root User: admin@client-domain.com / $(grep ROOT_USER_PASSWORD .env | cut -d= -f2)" > /opt/prs/QUICK_ACCESS.txt
 
 cat /opt/prs/QUICK_ACCESS.txt
@@ -157,8 +157,8 @@ cat /opt/prs/QUICK_ACCESS.txt
 ### **First 30 minutes: Load Testing**
 ```bash
 # Comprehensive load test
-ab -n 1000 -c 20 https://192.168.16.100/ | tee /tmp/load-test.txt
-ab -n 500 -c 10 https://192.168.16.100/api/health | tee -a /tmp/load-test.txt
+ab -n 1000 -c 20 https://192.168.0.100/ | tee /tmp/load-test.txt
+ab -n 500 -c 10 https://192.168.0.100/api/health | tee -a /tmp/load-test.txt
 
 # Check results
 grep "Requests per second\|Time per request\|Failed requests" /tmp/load-test.txt
@@ -167,12 +167,12 @@ grep "Requests per second\|Time per request\|Failed requests" /tmp/load-test.txt
 ### **Next 15 minutes: Monitoring Validation**
 ```bash
 # Quick Grafana setup (if needed)
-# Login to http://192.168.16.100:3001/
+# Login to http://192.168.0.100:3001/
 # Import basic dashboard
 # Verify metrics are flowing
 
 # Check Prometheus targets
-curl -s http://192.168.16.100:9090/api/v1/targets | grep -o '"health":"[^"]*"' | sort | uniq -c
+curl -s http://192.168.0.100:9090/api/v1/targets | grep -o '"health":"[^"]*"' | sort | uniq -c
 ```
 
 ### **Last 15 minutes: Final Checks**
@@ -180,8 +180,8 @@ curl -s http://192.168.16.100:9090/api/v1/targets | grep -o '"health":"[^"]*"' |
 # Final validation checklist
 echo "=== FINAL VALIDATION ==="
 echo "Containers: $(docker ps | wc -l)"
-echo "Frontend: $(curl -s -o /dev/null -w "%{http_code}" https://192.168.16.100/)"
-echo "Backend: $(curl -s -o /dev/null -w "%{http_code}" https://192.168.16.100/api/health)"
+echo "Frontend: $(curl -s -o /dev/null -w "%{http_code}" https://192.168.0.100/)"
+echo "Backend: $(curl -s -o /dev/null -w "%{http_code}" https://192.168.0.100/api/health)"
 echo "Database: $(docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -t -c "SELECT 'OK';" | tr -d ' \n')"
 echo "Memory: $(free -h | grep Mem | awk '{print $3"/"$2}')"
 echo "SSD: $(df -h /mnt/ssd | awk 'NR==2 {print $5}')"
@@ -197,8 +197,8 @@ docker ps --format "table {{.Names}}\t{{.Status}}"
 
 ### **After 4 Hours You Should Have:**
 - ✅ **All 11 services running** (`docker ps | wc -l` shows 11+)
-- ✅ **HTTPS working** (https://192.168.16.100/ returns 200)
-- ✅ **API responding** (https://192.168.16.100/api/health returns 200)
+- ✅ **HTTPS working** (https://192.168.0.100/ returns 200)
+- ✅ **API responding** (https://192.168.0.100/api/health returns 200)
 - ✅ **Database operational** (TimescaleDB extension active)
 - ✅ **Monitoring active** (Grafana/Prometheus accessible)
 - ✅ **Backups scheduled** (`crontab -l` shows backup jobs)

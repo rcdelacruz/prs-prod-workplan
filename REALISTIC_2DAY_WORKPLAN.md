@@ -1,8 +1,8 @@
 # ⚡ PRS On-Premises Deployment - REALISTIC 2-DAY WORKPLAN
 
 ## 🎯 **OVERVIEW**
-**Total Time: 2 Days (16 hours)** for experienced team  
-**Team Size: 2-3 people** (1 DevOps, 1 Developer, 1 IT Support)  
+**Total Time: 2 Days (16 hours)** for experienced team
+**Team Size: 2-3 people** (1 DevOps, 1 Developer, 1 IT Support)
 **Prerequisites: All hardware ready, network configured**
 
 ---
@@ -120,12 +120,12 @@ docker compose -f docker-compose.onprem.yml up -d adminer portainer
 #### **Hour 6: Service Validation (3:00-4:00 PM)**
 ```bash
 # Test all endpoints (30 minutes)
-curl -f https://192.168.16.100/                    # Frontend
-curl -f https://192.168.16.100/api/health          # Backend
-curl -f http://192.168.16.100:3001/                # Grafana
-curl -f http://192.168.16.100:9090/                # Prometheus
-curl -f http://192.168.16.100:8080/                # Adminer
-curl -f http://192.168.16.100:9000/                # Portainer
+curl -f https://192.168.0.100/                    # Frontend
+curl -f https://192.168.0.100/api/health          # Backend
+curl -f http://192.168.0.100:3001/                # Grafana
+curl -f http://192.168.0.100:9090/                # Prometheus
+curl -f http://192.168.0.100:8080/                # Adminer
+curl -f http://192.168.0.100:9000/                # Portainer
 
 # Database connectivity test (15 minutes)
 docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -c "SELECT version();"
@@ -133,7 +133,7 @@ docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -c 
 
 # Performance test (15 minutes)
 sudo apt install -y apache2-utils
-ab -n 50 -c 5 https://192.168.16.100/
+ab -n 50 -c 5 https://192.168.0.100/
 ```
 **Validation**: All curl commands return 200, ab test completes without errors
 
@@ -161,20 +161,20 @@ sudo chmod +x /opt/prs/backup-scripts/*.sh
 # Create admin credentials document (20 minutes)
 cat > /opt/prs/ADMIN_CREDENTIALS.txt << EOF
 === PRS On-Premises Admin Credentials ===
-Application URL: https://192.168.16.100/
+Application URL: https://192.168.0.100/
 Admin Email: admin@client-domain.com
 Admin Password: [from ROOT_USER_PASSWORD in .env]
 
-Grafana: http://192.168.16.100:3001/
+Grafana: http://192.168.0.100:3001/
 Grafana Admin: admin
 Grafana Password: [from GRAFANA_ADMIN_PASSWORD in .env]
 
-Adminer: http://192.168.16.100:8080/
+Adminer: http://192.168.0.100:8080/
 Database: prs_production
 User: prs_user
 Password: [from POSTGRES_PASSWORD in .env]
 
-Portainer: http://192.168.16.100:9000/
+Portainer: http://192.168.0.100:9000/
 EOF
 
 # Final system status (20 minutes)
@@ -208,7 +208,7 @@ docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -c 
 #### **Hour 10: Monitoring Configuration (10:00-11:00 AM)**
 ```bash
 # Configure Grafana dashboards (45 minutes)
-# Login to http://192.168.16.100:3001/
+# Login to http://192.168.0.100:3001/
 # Import system dashboard
 # Configure alerts
 
@@ -219,8 +219,8 @@ docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -c 
 #### **Hour 11: Load Testing (11:00 AM-12:00 PM)**
 ```bash
 # Comprehensive load test (45 minutes)
-ab -n 1000 -c 20 https://192.168.16.100/
-ab -n 500 -c 10 https://192.168.16.100/api/health
+ab -n 1000 -c 20 https://192.168.0.100/
+ab -n 500 -c 10 https://192.168.0.100/api/health
 
 # Monitor during load test (15 minutes)
 # Check Grafana dashboards
@@ -231,7 +231,7 @@ ab -n 500 -c 10 https://192.168.16.100/api/health
 ```bash
 # Functional testing checklist (60 minutes)
 # - Admin login
-# - User registration  
+# - User registration
 # - File upload
 # - Report generation
 # - All main features
@@ -244,7 +244,7 @@ ab -n 500 -c 10 https://192.168.16.100/api/health
 # Security checks (45 minutes)
 sudo ufw status verbose
 openssl x509 -in /opt/prs/ssl/server.crt -noout -dates
-nmap -p 80,443,8080,3001,9000,9090 192.168.16.100
+nmap -p 80,443,8080,3001,9000,9090 192.168.0.100
 
 # Penetration testing (15 minutes)
 # Basic security scan
@@ -280,7 +280,7 @@ nmap -p 80,443,8080,3001,9000,9090 192.168.16.100
 /opt/prs/prod-workplan/99-templates-examples/health-check.sh
 
 # Performance validation (20 minutes)
-ab -n 100 -c 10 https://192.168.16.100/
+ab -n 100 -c 10 https://192.168.0.100/
 
 # Go-live checklist (20 minutes)
 # - All services healthy

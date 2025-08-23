@@ -75,27 +75,27 @@ cat > "$CREDS_FILE" << EOF
 Generated: $(date)
 
 Application Access:
-URL: https://192.168.16.100/
+URL: https://192.168.0.100/
 Admin Email: admin@$(hostname -d 2>/dev/null || echo 'local')
 Admin Password: $ROOT_USER_PASSWORD
 
 Grafana Monitoring:
-URL: http://192.168.16.100:3001/
+URL: http://192.168.0.100:3001/
 Username: admin
 Password: $GRAFANA_ADMIN_PASSWORD
 
 Database Access (Adminer):
-URL: http://192.168.16.100:8080/
+URL: http://192.168.0.100:8080/
 Database: prs_production
 Username: prs_user
 Password: $POSTGRES_PASSWORD
 
 Container Management (Portainer):
-URL: http://192.168.16.100:9000/
+URL: http://192.168.0.100:9000/
 (Setup admin user on first access)
 
 Prometheus Monitoring:
-URL: http://192.168.16.100:9090/
+URL: http://192.168.0.100:9090/
 
 IMPORTANT: Keep this file secure and share only with authorized personnel.
 EOF
@@ -105,7 +105,7 @@ log_success "Admin credentials saved: $CREDS_FILE"
 echo ""
 log_warning "IMPORTANT: Please review and customize the following in $ENV_FILE:"
 echo "  - DOMAIN (currently set to prs.$(hostname -d 2>/dev/null || echo 'local'))"
-echo "  - SERVER_IP (currently set to 192.168.16.100)"
+echo "  - SERVER_IP (currently set to 192.168.0.100)"
 echo "  - SMTP settings for email notifications"
 echo "  - Any other client-specific settings"
 
@@ -113,7 +113,7 @@ echo ""
 log_info "Next steps:"
 echo "  1. Review and customize $ENV_FILE"
 echo "  2. Run: $SCRIPT_DIR/deploy-onprem.sh deploy"
-echo "  3. Access application at https://192.168.16.100/"
+echo "  3. Access application at https://192.168.0.100/"
 
 echo ""
 log_success "Environment setup complete!"

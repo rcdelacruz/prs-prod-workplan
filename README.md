@@ -68,7 +68,7 @@ EC2 Setup (Cloudflare Tunnel):
 Internet → Cloudflare → Tunnel → localhost:ports
 
 On-Premises Setup (Internal Network):
-Internal Network (192.168.0.0/20) → Hardware Firewall → Server (192.168.16.100) → Services
+Internal Network (192.168.0.0/20) → Hardware Firewall → Server (192.168.0.100) → Services
 ```
 
 ### Storage Architecture
@@ -127,7 +127,7 @@ prod-workplan/
 
 ### 2. **Network Access Changes**
 - **From**: `127.0.0.1:port` (localhost only)
-- **To**: `192.168.16.100:port` (internal network)
+- **To**: `192.168.0.100:port` (internal network)
 - **SSL**: Let's Encrypt certificates instead of Cloudflare SSL
 
 ### 3. **Storage Strategy Changes**

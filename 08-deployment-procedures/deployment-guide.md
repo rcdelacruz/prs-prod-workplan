@@ -12,7 +12,7 @@ This document provides step-by-step deployment procedures for the PRS on-premise
 - [ ] SSD (470GB) mounted at `/mnt/ssd` with RAID1
 - [ ] HDD (2.4TB) mounted at `/mnt/hdd` with RAID5
 - [ ] Network connectivity to 192.168.0.0/20
-- [ ] Static IP 192.168.16.100 assigned
+- [ ] Static IP 192.168.0.100 assigned
 - [ ] Hardware firewall rules configured by IT team
 - [ ] UPS backup power tested and functional
 
@@ -255,16 +255,16 @@ docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -c 
 ### Step 6.1: Health Checks
 ```bash
 # Check service health
-curl -f http://192.168.16.100/health
-curl -f https://192.168.16.100/health
+curl -f http://192.168.0.100/health
+curl -f https://192.168.0.100/health
 
 # Check API endpoints
-curl -f http://192.168.16.100/api/health
-curl -f https://192.168.16.100/api/health
+curl -f http://192.168.0.100/api/health
+curl -f https://192.168.0.100/api/health
 
 # Check monitoring endpoints
-curl -f http://192.168.16.100:9090/-/healthy  # Prometheus
-curl -f http://192.168.16.100:3001/api/health  # Grafana
+curl -f http://192.168.0.100:9090/-/healthy  # Prometheus
+curl -f http://192.168.0.100:3001/api/health  # Grafana
 ```
 
 ### Step 6.2: Performance Testing
@@ -276,7 +276,7 @@ docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -c 
 docker exec prs-onprem-redis redis-cli --latency-history -i 1
 
 # Test application response time
-curl -w "@curl-format.txt" -o /dev/null -s https://192.168.16.100/
+curl -w "@curl-format.txt" -o /dev/null -s https://192.168.0.100/
 ```
 
 ### Step 6.3: Load Testing
@@ -285,10 +285,10 @@ curl -w "@curl-format.txt" -o /dev/null -s https://192.168.16.100/
 sudo apt install -y apache2-utils
 
 # Test with 10 concurrent users
-ab -n 100 -c 10 https://192.168.16.100/
+ab -n 100 -c 10 https://192.168.0.100/
 
 # Test API endpoints
-ab -n 100 -c 10 https://192.168.16.100/api/health
+ab -n 100 -c 10 https://192.168.0.100/api/health
 ```
 
 ## 📊 Phase 7: Monitoring Setup
@@ -296,7 +296,7 @@ ab -n 100 -c 10 https://192.168.16.100/api/health
 ### Step 7.1: Configure Monitoring
 ```bash
 # Access Grafana
-open http://192.168.16.100:3001
+open http://192.168.0.100:3001
 # Login with admin credentials from .env file
 
 # Import dashboards
@@ -338,11 +338,11 @@ crontab -e
 /opt/prs/scripts/health-check.sh
 
 # Verify all services are accessible
-curl -f https://192.168.16.100/
-curl -f https://192.168.16.100/api/health
-curl -f http://192.168.16.100:8080/  # Adminer
-curl -f http://192.168.16.100:3001/  # Grafana
-curl -f http://192.168.16.100:9000/  # Portainer
+curl -f https://192.168.0.100/
+curl -f https://192.168.0.100/api/health
+curl -f http://192.168.0.100:8080/  # Adminer
+curl -f http://192.168.0.100:3001/  # Grafana
+curl -f http://192.168.0.100:9000/  # Portainer
 ```
 
 ### Step 8.2: User Acceptance Testing
@@ -391,7 +391,7 @@ docker compose -f docker-compose.onprem.yml.backup up -d
 
 ---
 
-**Document Version**: 1.0  
-**Created**: 2025-08-13  
-**Last Updated**: 2025-08-13  
+**Document Version**: 1.0
+**Created**: 2025-08-13
+**Last Updated**: 2025-08-13
 **Status**: Production Ready

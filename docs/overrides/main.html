@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block config %}
+  {{ super() }}
+  <script>
+    var palette = JSON.parse(localStorage.getItem(".__palette"))
+    if (palette && typeof palette.color === "object") {
+      if (palette.color.scheme === "slate") {
+        document.body.setAttribute("data-md-color-scheme", "slate")
+      }
+    }
+  </script>
+{% endblock %}
+
+{% block libs %}
+  {{ super() }}
+  <script src="https://unpkg.com/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  <script>
+    document$.subscribe(() => {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: document.body.getAttribute("data-md-color-scheme") === "slate" ? "dark" : "default"
+      })
+      mermaid.run()
+    })
+  </script>
+{% endblock %}

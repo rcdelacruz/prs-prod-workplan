@@ -1,0 +1,139 @@
+site_name: PRS On-Premises Deployment Guide
+site_description: Comprehensive deployment and maintenance guide for PRS Production System
+site_author: PRS Development Team
+site_url: https://prs-deployment-docs.local
+
+# Repository
+repo_name: prs-deployment
+repo_url: https://github.com/your-org/prs-deployment
+edit_uri: edit/main/docs/
+
+# Configuration
+theme:
+  name: material
+  font:
+    text: Work Sans
+    code: Roboto Mono
+  palette:
+    # Palette toggle for light mode
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+
+# Extensions
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+# Plugins
+plugins:
+  - search
+
+# Navigation
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Overview: getting-started/overview.md
+    - Prerequisites: getting-started/prerequisites.md
+    - Quick Start: getting-started/quick-start.md
+  - Hardware & Infrastructure:
+    - Hardware Requirements: hardware/requirements.md
+    - Storage Configuration: hardware/storage.md
+    - Network Setup: hardware/network.md
+    - Performance Optimization: hardware/optimization.md
+  - Installation:
+    - Environment Setup: installation/environment.md
+    - Docker Configuration: installation/docker.md
+    - Database Setup: installation/database.md
+    - SSL Configuration: installation/ssl.md
+  - Configuration:
+    - Application Config: configuration/application.md
+    - Database Config: configuration/database.md
+    - Security Settings: configuration/security.md
+    - Monitoring Setup: configuration/monitoring.md
+  - Deployment:
+    - Deployment Process: deployment/process.md
+    - Custom Domain Setup: deployment/custom-domain.md
+    - Testing & Validation: deployment/testing.md
+    - Troubleshooting: deployment/troubleshooting.md
+  - Database Management:
+    - TimescaleDB Guide: database/timescaledb.md
+    - Backup & Recovery: database/backup.md
+    - Performance Tuning: database/performance.md
+    - Maintenance Tasks: database/maintenance.md
+  - Operations:
+    - Daily Operations: operations/daily.md
+    - Monitoring: operations/monitoring.md
+    - Backup Procedures: operations/backup.md
+    - Health Checks: operations/health-checks.md
+  - Maintenance:
+    - Routine Maintenance: maintenance/routine.md
+    - Updates & Upgrades: maintenance/updates.md
+    - Security Patches: maintenance/security.md
+    - Capacity Planning: maintenance/capacity.md
+  - Scripts & Automation:
+    - Deployment Scripts: scripts/deployment.md
+    - Backup Scripts: scripts/backup.md
+    - Monitoring Scripts: scripts/monitoring.md
+    - Maintenance Scripts: scripts/maintenance.md
+  - Reference:
+    - Environment Variables: reference/environment.md
+    - API Endpoints: reference/api.md
+    - Configuration Files: reference/config-files.md
+    - Command Reference: reference/commands.md
+  - Appendix:
+    - FAQ: appendix/faq.md
+    - Glossary: appendix/glossary.md
+    - Change Log: appendix/changelog.md
+    - Support: appendix/support.md
+
+# Extra
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-org/prs-deployment
+    - icon: fontawesome/solid/envelope
+      link: mailto:support@yourcompany.com
+
+
+
+# Copyright
+copyright: Copyright &copy; 2024 PRS Development Team
