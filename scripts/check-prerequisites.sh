@@ -188,6 +188,31 @@ check_docker() {
     echo ""
 }
 
+check_github_cli() {
+    echo -e "${BLUE}GitHub CLI Check:${NC}"
+
+    if command -v gh >/dev/null 2>&1; then
+        print_success "GitHub CLI installed"
+        local gh_version=$(gh --version 2>/dev/null | head -n1 || echo "unknown")
+        echo "   Version: $gh_version"
+
+        # Check if authenticated
+        if gh auth status >/dev/null 2>&1; then
+            print_success "GitHub CLI authenticated"
+        else
+            print_error "GitHub CLI not authenticated - run 'gh auth login'"
+            echo "   Deploy script needs access to private repositories"
+            OVERALL_STATUS=1
+        fi
+    else
+        print_error "GitHub CLI not installed - REQUIRED for deployment"
+        echo "   Install with: curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg"
+        echo "   Then: sudo apt update && sudo apt install gh"
+        OVERALL_STATUS=1
+    fi
+    echo ""
+}
+
 show_summary() {
     echo -e "${BLUE}================================================================${NC}"
     echo -e "${BLUE}                    Prerequisites Summary                     ${NC}"
@@ -208,6 +233,7 @@ show_summary() {
         echo "   • Ensure /mnt/ssd and /mnt/hdd exist"
         echo "   • Use non-root user account"
         echo "   • Verify sufficient RAM (16GB+)"
+        echo "   • Install and authenticate GitHub CLI (gh auth login)"
         echo ""
         echo -e "${YELLOW}See full setup guide:${NC}"
         echo "   /opt/prs-deployment/docs/docs/getting-started/prerequisites.md"
@@ -229,6 +255,7 @@ main() {
     check_user
     check_network
     check_docker
+    check_github_cli
 
     show_summary
 

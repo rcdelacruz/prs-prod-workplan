@@ -43,6 +43,8 @@ This guide will get you from zero to a fully operational PRS system in **2-3 hou
 
 **Critical requirements verified by deploy script:**
 - **Ubuntu 24.04 LTS** server (22.04 supported)
+- **System updated** (`sudo apt update && sudo apt upgrade -y`)
+- **GitHub CLI installed** and authenticated (`gh auth login`)
 - **16GB+ RAM** (checked by script)
 - **Storage mounts** `/mnt/ssd` and `/mnt/hdd` (required)
 - **Non-root user** with sudo access (script fails if root)
