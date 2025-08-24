@@ -100,18 +100,90 @@ configure_environment() {
     echo "3) Custom certificates (place in ssl/ directory)"
     echo ""
 
-    # Database password
+    # Database password (idempotent - only generate if not already set)
     echo ""
     echo -e "${BLUE}Security Configuration${NC}"
     echo ""
-    local db_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
-    prompt_with_default "Database password (auto-generated)" "$db_password" "postgres_password"
 
-    local redis_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
-    prompt_with_default "Redis password (auto-generated)" "$redis_password" "redis_password"
+    # Get existing passwords from .env file (if they exist)
+    local existing_db_password=$(grep "^POSTGRES_PASSWORD=" "$env_file" 2>/dev/null | cut -d'=' -f2 || echo "")
+    local existing_redis_password=$(grep "^REDIS_PASSWORD=" "$env_file" 2>/dev/null | cut -d'=' -f2 || echo "")
+    local existing_root_password=$(grep "^ROOT_USER_PASSWORD=" "$env_file" 2>/dev/null | cut -d'=' -f2 || echo "")
 
-    local root_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
-    prompt_with_default "Root user password (auto-generated)" "$root_password" "root_password"
+    # Only generate new passwords if they don't exist or are placeholder values
+    local db_password="$existing_db_password"
+    if [ -z "$db_password" ] || [[ "$db_password" == *"CHANGE_THIS"* ]]; then
+        db_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+        print_info "Generated new database password"
+    else
+        print_info "Using existing database password"
+    fi
+    prompt_with_default "Database password" "$db_password" "postgres_password"
+
+    local redis_password="$existing_redis_password"
+    if [ -z "$redis_password" ] || [[ "$redis_password" == *"CHANGE_THIS"* ]]; then
+        redis_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+        print_info "Generated new Redis password"
+    else
+        print_info "Using existing Redis password"
+    fi
+    prompt_with_default "Redis password" "$redis_password" "redis_password"
+
+    local root_password="$existing_root_password"
+    if [ -z "$root_password" ] || [[ "$root_password" == *"CHANGE_THIS"* ]]; then
+        root_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+        print_info "Generated new root user password"
+    else
+        print_info "Using existing root user password"
+    fi
+    prompt_with_default "Root user password" "$root_password" "root_password"
+
+    # Application secrets (idempotent - only generate if placeholder values)
+    echo ""
+    echo -e "${BLUE}Application Secrets Configuration${NC}"
+    echo ""
+
+    # Get existing secrets from .env file
+    local existing_jwt_secret=$(grep "^JWT_SECRET=" "$env_file" 2>/dev/null | cut -d'=' -f2 || echo "")
+    local existing_encryption_key=$(grep "^ENCRYPTION_KEY=" "$env_file" 2>/dev/null | cut -d'=' -f2 || echo "")
+    local existing_otp_key=$(grep "^OTP_KEY=" "$env_file" 2>/dev/null | cut -d'=' -f2 || echo "")
+    local existing_pass_secret=$(grep "^PASS_SECRET=" "$env_file" 2>/dev/null | cut -d'=' -f2 || echo "")
+
+    # JWT Secret (64 characters)
+    local jwt_secret="$existing_jwt_secret"
+    if [ -z "$jwt_secret" ] || [[ "$jwt_secret" == *"CHANGE_THIS"* ]]; then
+        jwt_secret=$(openssl rand -base64 48 | tr -d "=+/" | cut -c1-64)
+        print_info "Generated new JWT secret"
+    else
+        print_info "Using existing JWT secret"
+    fi
+
+    # Encryption Key (exactly 32 characters for AES-256)
+    local encryption_key="$existing_encryption_key"
+    if [ -z "$encryption_key" ] || [[ "$encryption_key" == *"CHANGE_THIS"* ]] || [ ${#encryption_key} -ne 32 ]; then
+        encryption_key=$(openssl rand -hex 16)  # 16 bytes = 32 hex chars
+        print_info "Generated new encryption key (32 chars)"
+    else
+        print_info "Using existing encryption key"
+    fi
+
+    # OTP Key (32 characters)
+    local otp_key="$existing_otp_key"
+    if [ -z "$otp_key" ] || [[ "$otp_key" == *"CHANGE_THIS"* ]] || [ ${#otp_key} -ne 32 ]; then
+        otp_key=$(openssl rand -hex 16)  # 16 bytes = 32 hex chars
+        print_info "Generated new OTP key (32 chars)"
+    else
+        print_info "Using existing OTP key"
+    fi
+
+    # Pass Secret (32 characters)
+    local pass_secret="$existing_pass_secret"
+    if [ -z "$pass_secret" ] || [[ "$pass_secret" == *"CHANGE_THIS"* ]] || [ ${#pass_secret} -ne 32 ]; then
+        pass_secret=$(openssl rand -hex 16)  # 16 bytes = 32 hex chars
+        print_info "Generated new pass secret (32 chars)"
+    else
+        print_info "Using existing pass secret"
+    fi
 
     # Update .env file with correct variable names
     sed -i "s|^DOMAIN=.*|DOMAIN=$domain|" "$env_file"
@@ -121,14 +193,123 @@ configure_environment() {
     sed -i "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=$redis_password|" "$env_file"
     sed -i "s|^ROOT_USER_PASSWORD=.*|ROOT_USER_PASSWORD=$root_password|" "$env_file"
 
-    # Update frontend URLs to match domain
-    sed -i "s|^VITE_APP_API_URL=.*|VITE_APP_API_URL=https://$domain/api|" "$env_file"
-    sed -i "s|^VITE_APP_UPLOAD_URL=.*|VITE_APP_UPLOAD_URL=https://$domain/upload|" "$env_file"
+    # Update application secrets
+    sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$jwt_secret|" "$env_file"
+    sed -i "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$encryption_key|" "$env_file"
+    sed -i "s|^OTP_KEY=.*|OTP_KEY=$otp_key|" "$env_file"
+    sed -i "s|^PASS_SECRET=.*|PASS_SECRET=$pass_secret|" "$env_file"
 
-    # Update CORS origin
-    sed -i "s|^CORS_ORIGIN=.*|CORS_ORIGIN=https://$domain,http://192.168.0.0/20|" "$env_file"
+    # Configure dynamic frontend URLs (empty values enable dynamic detection)
+    sed -i "s|^VITE_APP_API_URL=.*|VITE_APP_API_URL=|" "$env_file"
+    sed -i "s|^VITE_APP_UPLOAD_URL=.*|VITE_APP_UPLOAD_URL=|" "$env_file"
+
+    # Update CORS origin to support both domain and IP access
+    sed -i "s|^CORS_ORIGIN=.*|CORS_ORIGIN=https://$domain,http://$domain,https://$server_ip,http://$server_ip,http://192.168.0.0/20|" "$env_file"
 
     print_success "Environment configuration updated"
+
+    # Configure dynamic frontend host detection
+    configure_dynamic_frontend
+}
+
+# Function to configure dynamic frontend host detection
+configure_dynamic_frontend() {
+    print_info "Configuring dynamic frontend host detection..."
+
+    local frontend_config_file="$PROJECT_DIR/../prs-frontend-a/src/config/env.js"
+
+    # Check if frontend repository exists
+    if [ ! -f "$frontend_config_file" ]; then
+        print_warning "Frontend configuration file not found at $frontend_config_file"
+        print_info "Dynamic host detection will be configured when repositories are cloned"
+        return
+    fi
+
+    # Check if dynamic configuration is already implemented
+    if grep -q "getApiUrl" "$frontend_config_file"; then
+        print_success "Dynamic frontend host detection already configured"
+        return
+    fi
+
+    print_info "Updating frontend configuration for dynamic host detection..."
+
+    # Create backup
+    cp "$frontend_config_file" "$frontend_config_file.backup"
+
+    # Apply dynamic configuration patch
+    cat > /tmp/env_dynamic_patch.js << 'EOF'
+import * as z from 'zod';
+
+const createEnv = () => {
+  const EnvSchema = z.object({
+    API_URL: z.string().default('http://localhost:4000'),
+    UPLOAD_URL: z.string().default('http://localhost:4000/upload'),
+    ENABLE_API_MOCKING: z
+      .string()
+      .refine(s => s === 'true' || s === 'false')
+      .transform(s => s === 'true')
+      .optional(),
+  });
+
+  const envVars = Object.entries(import.meta.env).reduce((acc, curr) => {
+    const [key, value] = curr;
+    if (key.startsWith('VITE_APP_')) {
+      acc[key.replace('VITE_APP_', '')] = value;
+    }
+    return acc;
+  }, {});
+
+  // Dynamically determine API URL based on current host
+  const getApiUrl = () => {
+    // If we have a build-time API URL, use it (for development/localhost)
+    if (envVars.API_URL && (envVars.API_URL.includes('localhost') || envVars.API_URL.includes('127.0.0.1'))) {
+      return envVars.API_URL;
+    }
+
+    // For production, use the current host with HTTPS
+    if (typeof window !== 'undefined') {
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      return `${protocol}//${host}/api`;
+    }
+
+    // Fallback to build-time URL if window is not available (SSR)
+    return envVars.API_URL || 'http://localhost:4000';
+  };
+
+  const apiUrl = getApiUrl();
+
+  const mutatedEnvVars = {
+    ...envVars,
+    API_URL: apiUrl,
+    UPLOAD_URL: `${apiUrl}/upload`,
+  };
+
+  const parsedEnv = EnvSchema.safeParse(mutatedEnvVars);
+
+  if (!parsedEnv.success) {
+    throw new Error(
+      `Invalid env provided.
+The following variables are missing or invalid:
+${Object.entries(parsedEnv.error.flatten().fieldErrors)
+  .map(([k, v]) => `- ${k}: ${v}`)
+  .join('\n')}
+`,
+    );
+  }
+
+  return parsedEnv.data;
+};
+
+export const env = createEnv();
+EOF
+
+    # Replace the frontend configuration
+    cp /tmp/env_dynamic_patch.js "$frontend_config_file"
+    rm /tmp/env_dynamic_patch.js
+
+    print_success "Dynamic frontend host detection configured"
+    print_info "Frontend will now automatically detect API URLs based on current host"
 }
 
 # Function to configure repositories
@@ -274,10 +455,14 @@ show_next_steps() {
     echo "   ./setup-monitoring-automation.sh"
     echo ""
     echo -e "${YELLOW}4. Access your system (office network 192.168.0.0/20 only):${NC}"
-    echo "   Main App: https://$domain (office network only)"
+    echo "   Main App: https://$domain OR https://$server_ip (office network only)"
     echo "   Grafana:  http://$server_ip:3000 (office network only)"
     echo "   Adminer:  http://$server_ip:8080 (office network only)"
     echo "   Portainer: http://$server_ip:9000 (office network only)"
+    echo ""
+    echo -e "${BLUE}Dynamic Host Detection:${NC}"
+    echo "   The frontend automatically detects whether you're accessing via IP or domain."
+    echo "   Both https://$domain and https://$server_ip will work seamlessly."
     echo ""
     echo -e "${BLUE}Useful commands after deployment:${NC}"
     echo "   ./deploy-onprem.sh status     # Check system status"

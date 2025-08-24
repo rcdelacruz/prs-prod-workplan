@@ -948,6 +948,105 @@ clone_repositories() {
             log_warning "Failed to update frontend repository, continuing with existing version"
         fi
     fi
+
+    # Configure dynamic frontend host detection after cloning
+    configure_dynamic_frontend_deployment
+}
+
+# Configure dynamic frontend host detection for deployment
+configure_dynamic_frontend_deployment() {
+    log_info "Configuring dynamic frontend host detection..."
+
+    local frontend_config_file="$REPO_BASE_DIR/$FRONTEND_DIR_NAME/src/config/env.js"
+
+    # Check if frontend repository exists
+    if [ ! -f "$frontend_config_file" ]; then
+        log_warning "Frontend configuration file not found at $frontend_config_file"
+        log_info "Skipping dynamic host detection configuration"
+        return
+    fi
+
+    # Check if dynamic configuration is already implemented
+    if grep -q "getApiUrl" "$frontend_config_file"; then
+        log_info "Dynamic frontend host detection already configured"
+        return
+    fi
+
+    log_info "Updating frontend configuration for dynamic host detection..."
+
+    # Create backup
+    cp "$frontend_config_file" "$frontend_config_file.backup"
+
+    # Apply dynamic configuration
+    cat > "$frontend_config_file" << 'EOF'
+import * as z from 'zod';
+
+const createEnv = () => {
+  const EnvSchema = z.object({
+    API_URL: z.string().default('http://localhost:4000'),
+    UPLOAD_URL: z.string().default('http://localhost:4000/upload'),
+    ENABLE_API_MOCKING: z
+      .string()
+      .refine(s => s === 'true' || s === 'false')
+      .transform(s => s === 'true')
+      .optional(),
+  });
+
+  const envVars = Object.entries(import.meta.env).reduce((acc, curr) => {
+    const [key, value] = curr;
+    if (key.startsWith('VITE_APP_')) {
+      acc[key.replace('VITE_APP_', '')] = value;
+    }
+    return acc;
+  }, {});
+
+  // Dynamically determine API URL based on current host
+  const getApiUrl = () => {
+    // If we have a build-time API URL, use it (for development/localhost)
+    if (envVars.API_URL && (envVars.API_URL.includes('localhost') || envVars.API_URL.includes('127.0.0.1'))) {
+      return envVars.API_URL;
+    }
+
+    // For production, use the current host with HTTPS
+    if (typeof window !== 'undefined') {
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      return `${protocol}//${host}/api`;
+    }
+
+    // Fallback to build-time URL if window is not available (SSR)
+    return envVars.API_URL || 'http://localhost:4000';
+  };
+
+  const apiUrl = getApiUrl();
+
+  const mutatedEnvVars = {
+    ...envVars,
+    API_URL: apiUrl,
+    UPLOAD_URL: `${apiUrl}/upload`,
+  };
+
+  const parsedEnv = EnvSchema.safeParse(mutatedEnvVars);
+
+  if (!parsedEnv.success) {
+    throw new Error(
+      `Invalid env provided.
+The following variables are missing or invalid:
+${Object.entries(parsedEnv.error.flatten().fieldErrors)
+  .map(([k, v]) => `- ${k}: ${v}`)
+  .join('\n')}
+`,
+    );
+  }
+
+  return parsedEnv.data;
+};
+
+export const env = createEnv();
+EOF
+
+    log_success "Dynamic frontend host detection configured"
+    log_info "Frontend will automatically detect API URLs based on current host (IP or domain)"
 }
 
 # Check docker permissions
@@ -1106,13 +1205,9 @@ build_images() {
                 # Source environment file to get build arguments
                 source "$ENV_FILE"
 
-                # Add build arguments if they exist in environment
-                if [ -n "${VITE_APP_API_URL:-}" ]; then
-                    build_args="$build_args --build-arg VITE_APP_API_URL=$VITE_APP_API_URL"
-                fi
-                if [ -n "${VITE_APP_UPLOAD_URL:-}" ]; then
-                    build_args="$build_args --build-arg VITE_APP_UPLOAD_URL=$VITE_APP_UPLOAD_URL"
-                fi
+                # Add build arguments (empty values enable dynamic host detection)
+                build_args="$build_args --build-arg VITE_APP_API_URL=${VITE_APP_API_URL:-}"
+                build_args="$build_args --build-arg VITE_APP_UPLOAD_URL=${VITE_APP_UPLOAD_URL:-}"
                 if [ -n "${VITE_APP_ENVIRONMENT:-}" ]; then
                     build_args="$build_args --build-arg VITE_APP_ENVIRONMENT=$VITE_APP_ENVIRONMENT"
                 else
@@ -1498,8 +1593,13 @@ show_usage() {
     echo "  FRONTEND_BRANCH         Frontend branch (default: main)"
     echo "  REPO_BASE_DIR           Repository base directory (default: /opt/prs)"
     echo "  FORCE_REBUILD           Set to 'true' to force rebuild of Docker images"
-    echo "  USE_FALLBACK_DOCKERFILE Set to 'true' to use Debian-based Dockerfile if Alpine repos fail
-  DOCKER_PLATFORM         Override Docker platform (auto-detected: linux/amd64, linux/arm64, linux/arm/v7)"
+    echo "  USE_FALLBACK_DOCKERFILE Set to 'true' to use Debian-based Dockerfile if Alpine repos fail"
+    echo "  DOCKER_PLATFORM         Override Docker platform (auto-detected: linux/amd64, linux/arm64, linux/arm/v7)"
+    echo ""
+    echo "Frontend Configuration:"
+    echo "  The frontend automatically detects the current host (IP or domain) for API calls."
+    echo "  Leave VITE_APP_API_URL and VITE_APP_UPLOAD_URL empty in .env for dynamic detection."
+    echo "  This allows access via both IP (192.168.0.100) and domain (prs.example.com)."
     echo ""
     echo "Examples:"
     echo "  $0 deploy                                    # Full deployment with default repos (prod environment)"

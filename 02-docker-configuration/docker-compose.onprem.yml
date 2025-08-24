@@ -186,14 +186,14 @@ services:
       context: ${REPOS_BASE_DIR:-/opt/prs}/${FRONTEND_REPO_NAME:-prs-frontend-a}
       dockerfile: Dockerfile.prod
       args:
-        - VITE_APP_API_URL=https://${DOMAIN}/api
-        - VITE_APP_UPLOAD_URL=https://${DOMAIN}/api/upload
+        - VITE_APP_API_URL=${VITE_APP_API_URL}
+        - VITE_APP_UPLOAD_URL=${VITE_APP_UPLOAD_URL}
         - VITE_APP_ENVIRONMENT=${VITE_APP_ENVIRONMENT:-production}
         - VITE_APP_ENABLE_DEVTOOLS=${VITE_APP_ENABLE_DEVTOOLS:-false}
     environment:
       - NODE_ENV=${NODE_ENV:-production}
-      - VITE_APP_API_URL=https://${DOMAIN}/api
-      - VITE_APP_UPLOAD_URL=https://${DOMAIN}/api/upload
+      - VITE_APP_API_URL=${VITE_APP_API_URL}
+      - VITE_APP_UPLOAD_URL=${VITE_APP_UPLOAD_URL}
       - VITE_APP_ENVIRONMENT=${VITE_APP_ENVIRONMENT:-production}
       - VITE_APP_ENABLE_DEVTOOLS=${VITE_APP_ENABLE_DEVTOOLS:-false}
     networks:
@@ -585,8 +585,8 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: ${NETWORK_SUBNET:-192.168.0.0/20}
-          gateway: ${NETWORK_GATEWAY:-192.168.0.1}
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
     driver_opts:
       com.docker.network.bridge.name: prs-onprem-br0
       com.docker.network.bridge.enable_icc: "true"
