@@ -1123,7 +1123,7 @@ build_images() {
                 fi
             fi
 
-            if $DOCKER_CMD build --no-cache --platform $DOCKER_PLATFORM -f "$REPO_BASE_DIR/$BACKEND_DIR_NAME/$frontend_dockerfile" $build_args -t "$frontend_tag" "$REPO_BASE_DIR/$FRONTEND_DIR_NAME"; then
+            if $DOCKER_CMD build --no-cache --platform $DOCKER_PLATFORM -f "$REPO_BASE_DIR/$FRONTEND_DIR_NAME/$frontend_dockerfile" $build_args -t "$frontend_tag" "$REPO_BASE_DIR/$FRONTEND_DIR_NAME"; then
                 log_success "Frontend image built successfully"
                 break
             else
