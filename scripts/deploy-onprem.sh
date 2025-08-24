@@ -68,6 +68,33 @@ BACKEND_BRANCH="${BACKEND_BRANCH:-main}"
 FRONTEND_BRANCH="${FRONTEND_BRANCH:-main}"
 REPO_BASE_DIR="${REPO_BASE_DIR:-/opt/prs}"
 
+# Detect system architecture for Docker builds
+detect_architecture() {
+    local arch=$(uname -m)
+    case $arch in
+        x86_64)
+            echo "linux/amd64"
+            ;;
+        aarch64|arm64)
+            echo "linux/arm64"
+            ;;
+        armv7l)
+            echo "linux/arm/v7"
+            ;;
+        *)
+            log_warning "Unknown architecture: $arch, defaulting to linux/amd64"
+            echo "linux/amd64"
+            ;;
+    esac
+}
+
+# Get Docker platform for current architecture (can be overridden via environment variable)
+DOCKER_PLATFORM="${DOCKER_PLATFORM:-$(detect_architecture)}"
+
+# Docker commands
+DOCKER_CMD="docker"
+COMPOSE_CMD="docker compose"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -942,6 +969,7 @@ check_docker_permissions() {
 # Build Docker images
 build_images() {
     log_info "Building Docker images..."
+    log_info "Detected architecture: $(uname -m) -> Docker platform: $DOCKER_PLATFORM"
 
     # Check docker permissions first
     if ! check_docker_permissions; then
@@ -1027,9 +1055,9 @@ build_images() {
             # Get environment-specific image tag
             local backend_tag=$(get_image_tag "prs-backend")
 
-            # echo $DOCKER_CMD build --no-cache --platform linux/arm64 -f "$REPO_BASE_DIR/$BACKEND_DIR_NAME/$dockerfile_path" -t "$backend_tag" "$REPO_BASE_DIR/$BACKEND_DIR_NAME"
+            # echo $DOCKER_CMD build --no-cache --platform $DOCKER_PLATFORM -f "$REPO_BASE_DIR/$BACKEND_DIR_NAME/$dockerfile_path" -t "$backend_tag" "$REPO_BASE_DIR/$BACKEND_DIR_NAME"
 
-            if $DOCKER_CMD build --no-cache --platform linux/arm64 -f "$REPO_BASE_DIR/$BACKEND_DIR_NAME/$dockerfile_path" -t "$backend_tag" "$REPO_BASE_DIR/$BACKEND_DIR_NAME"; then
+            if $DOCKER_CMD build --no-cache --platform $DOCKER_PLATFORM -f "$REPO_BASE_DIR/$BACKEND_DIR_NAME/$dockerfile_path" -t "$backend_tag" "$REPO_BASE_DIR/$BACKEND_DIR_NAME"; then
                 log_success "Backend image built successfully"
                 break
             else
@@ -1095,7 +1123,7 @@ build_images() {
                 fi
             fi
 
-            if $DOCKER_CMD build  --no-cache --platform linux/arm64-f "$REPO_BASE_DIR/$BACKEND_DIR_NAME/$frontend_dockerfile" $build_args -t "$frontend_tag" "$REPO_BASE_DIR/$FRONTEND_DIR_NAME"; then
+            if $DOCKER_CMD build --no-cache --platform $DOCKER_PLATFORM -f "$REPO_BASE_DIR/$BACKEND_DIR_NAME/$frontend_dockerfile" $build_args -t "$frontend_tag" "$REPO_BASE_DIR/$FRONTEND_DIR_NAME"; then
                 log_success "Frontend image built successfully"
                 break
             else
@@ -1470,7 +1498,8 @@ show_usage() {
     echo "  FRONTEND_BRANCH         Frontend branch (default: main)"
     echo "  REPO_BASE_DIR           Repository base directory (default: /opt/prs)"
     echo "  FORCE_REBUILD           Set to 'true' to force rebuild of Docker images"
-    echo "  USE_FALLBACK_DOCKERFILE Set to 'true' to use Debian-based Dockerfile if Alpine repos fail"
+    echo "  USE_FALLBACK_DOCKERFILE Set to 'true' to use Debian-based Dockerfile if Alpine repos fail
+  DOCKER_PLATFORM         Override Docker platform (auto-detected: linux/amd64, linux/arm64, linux/arm/v7)"
     echo ""
     echo "Examples:"
     echo "  $0 deploy                                    # Full deployment with default repos (prod environment)"
