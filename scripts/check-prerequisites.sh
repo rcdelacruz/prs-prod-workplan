@@ -213,6 +213,49 @@ check_github_cli() {
     echo ""
 }
 
+check_repository_structure() {
+    echo -e "${BLUE}Repository Structure Check:${NC}"
+
+    # Check if we're in the right directory structure
+    local current_dir=$(pwd)
+    local expected_dir="/opt/prs/prs-deployment/scripts"
+
+    if [ "$current_dir" = "$expected_dir" ]; then
+        print_success "Running from correct directory: $current_dir"
+    else
+        print_warning "Not in expected directory"
+        echo "   Current: $current_dir"
+        echo "   Expected: $expected_dir"
+    fi
+
+    # Check if base directory exists
+    if [ -d "/opt/prs" ]; then
+        print_success "/opt/prs base directory exists"
+    else
+        print_error "/opt/prs base directory missing"
+        echo "   Create with: sudo mkdir -p /opt/prs && sudo chown \$USER:\$USER /opt/prs"
+        OVERALL_STATUS=1
+    fi
+
+    # Check if deployment repository exists
+    if [ -d "/opt/prs/prs-deployment" ]; then
+        print_success "prs-deployment repository exists"
+
+        # Check if deploy script exists
+        if [ -f "/opt/prs/prs-deployment/scripts/deploy-onprem.sh" ]; then
+            print_success "deploy-onprem.sh script found"
+        else
+            print_error "deploy-onprem.sh script missing"
+            OVERALL_STATUS=1
+        fi
+    else
+        print_error "prs-deployment repository missing"
+        echo "   Clone with: cd /opt/prs && git clone https://github.com/stratpoint-engineering/prs-deployment.git"
+        OVERALL_STATUS=1
+    fi
+    echo ""
+}
+
 show_summary() {
     echo -e "${BLUE}================================================================${NC}"
     echo -e "${BLUE}                    Prerequisites Summary                     ${NC}"
@@ -223,7 +266,7 @@ show_summary() {
         print_success "All critical prerequisites met!"
         echo ""
         echo -e "${GREEN}Ready for deployment:${NC}"
-        echo "   1. cd /opt/prs-deployment/scripts"
+        echo "   1. cd /opt/prs/prs-deployment/scripts"
         echo "   2. ./quick-setup-helper.sh"
         echo "   3. sudo ./deploy-onprem.sh deploy"
     else
@@ -234,6 +277,7 @@ show_summary() {
         echo "   • Use non-root user account"
         echo "   • Verify sufficient RAM (16GB+)"
         echo "   • Install and authenticate GitHub CLI (gh auth login)"
+        echo "   • Clone prs-deployment repository to /opt/prs/"
         echo ""
         echo -e "${YELLOW}See full setup guide:${NC}"
         echo "   /opt/prs-deployment/docs/docs/getting-started/prerequisites.md"
@@ -256,6 +300,7 @@ main() {
     check_network
     check_docker
     check_github_cli
+    check_repository_structure
 
     show_summary
 

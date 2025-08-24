@@ -10,8 +10,9 @@ This guide provides comprehensive instructions for managing TimescaleDB in the P
 - **PostgreSQL Version**: 15 with TimescaleDB extension
 - **Memory Allocation**: 6GB (37.5% of total 16GB RAM)
 - **Storage Strategy**: Dual SSD/HDD with intelligent tiering
-- **Hypertables**: 38 production hypertables
+- **Hypertables**: 38 production hypertables (as implemented in migration)
 - **Expected Load**: 100 concurrent users, 50,000+ rows/sec ingestion
+- **Migration File**: `20250628120000-timescaledb-setup.js` with comprehensive coverage
 
 ### Storage Tiering Strategy
 ```
@@ -92,7 +93,7 @@ ALTER TABLE user_activities SET (
 ### Chunk Management
 ```sql
 -- View chunk information
-SELECT 
+SELECT
     hypertable_name,
     chunk_name,
     chunk_schema,
@@ -135,7 +136,7 @@ SELECT remove_compression_policy('user_activities');
 ```sql
 -- Compress specific chunks
 SELECT compress_chunk(chunk_name)
-FROM timescaledb_information.chunks 
+FROM timescaledb_information.chunks
 WHERE hypertable_name = 'user_activities'
 AND range_start < NOW() - INTERVAL '7 days'
 AND NOT is_compressed;
@@ -144,12 +145,12 @@ AND NOT is_compressed;
 SELECT decompress_chunk('_timescaledb_internal._hyper_1_1_chunk');
 
 -- Check compression ratio
-SELECT 
+SELECT
     hypertable_name,
     pg_size_pretty(before_compression_total_bytes) as before_compression,
     pg_size_pretty(after_compression_total_bytes) as after_compression,
     round(
-        (before_compression_total_bytes::numeric - after_compression_total_bytes::numeric) 
+        (before_compression_total_bytes::numeric - after_compression_total_bytes::numeric)
         / before_compression_total_bytes::numeric * 100, 2
     ) as compression_ratio_percent
 FROM timescaledb_information.compressed_hypertable_stats;
@@ -165,15 +166,15 @@ CREATE TABLESPACE hdd_cold LOCATION '/mnt/hdd/postgresql-cold';
 
 -- Add data movement policy (move chunks older than 30 days to HDD)
 SELECT add_move_chunk_policy(
-    'user_activities', 
-    INTERVAL '30 days', 
+    'user_activities',
+    INTERVAL '30 days',
     'hdd_cold'
 );
 
 -- Add data movement for system metrics (move after 14 days)
 SELECT add_move_chunk_policy(
-    'system_metrics', 
-    INTERVAL '14 days', 
+    'system_metrics',
+    INTERVAL '14 days',
     'hdd_cold'
 );
 
@@ -198,12 +199,12 @@ SELECT * FROM timescaledb_information.drop_chunks_policies;
 ### Query Optimization
 ```sql
 -- Create time-based indexes for better performance
-CREATE INDEX CONCURRENTLY idx_user_activities_time_user 
+CREATE INDEX CONCURRENTLY idx_user_activities_time_user
 ON user_activities (timestamp DESC, user_id);
 
 -- Create partial indexes for hot data
-CREATE INDEX CONCURRENTLY idx_user_activities_recent 
-ON user_activities (user_id, timestamp DESC) 
+CREATE INDEX CONCURRENTLY idx_user_activities_recent
+ON user_activities (user_id, timestamp DESC)
 WHERE timestamp >= NOW() - INTERVAL '30 days';
 
 -- Analyze tables for better query planning
@@ -218,7 +219,7 @@ SELECT update_stats('user_activities');
 -- Create continuous aggregate for hourly summaries
 CREATE MATERIALIZED VIEW user_activity_hourly
 WITH (timescaledb.continuous) AS
-SELECT 
+SELECT
     time_bucket('1 hour', timestamp) AS hour,
     user_id,
     count(*) as activity_count,
@@ -246,7 +247,7 @@ CALL refresh_continuous_aggregate('user_activity_hourly', NULL, NULL);
 SELECT * FROM timescaledb_information.license;
 
 -- Check hypertable statistics
-SELECT 
+SELECT
     hypertable_name,
     num_chunks,
     table_size,
@@ -255,7 +256,7 @@ SELECT
 FROM timescaledb_information.hypertables;
 
 -- Check compression statistics
-SELECT 
+SELECT
     hypertable_name,
     compression_status,
     uncompressed_heap_size,
@@ -277,15 +278,15 @@ VACUUM ANALYZE user_activities;
 REINDEX TABLE user_activities;
 
 -- Update statistics for all hypertables
-SELECT update_stats(hypertable_name) 
+SELECT update_stats(hypertable_name)
 FROM timescaledb_information.hypertables;
 
 -- Check for bloated tables
-SELECT 
+SELECT
     schemaname,
     tablename,
     pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
-FROM pg_tables 
+FROM pg_tables
 WHERE schemaname NOT IN ('information_schema', 'pg_catalog')
 ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
 ```
@@ -297,52 +298,52 @@ ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
 #### High Memory Usage
 ```sql
 -- Check memory usage by queries
-SELECT 
+SELECT
     query,
     calls,
     total_time,
     mean_time,
     rows
-FROM pg_stat_statements 
-ORDER BY total_time DESC 
+FROM pg_stat_statements
+ORDER BY total_time DESC
 LIMIT 10;
 
 -- Check for long-running queries
-SELECT 
+SELECT
     pid,
     now() - pg_stat_activity.query_start AS duration,
-    query 
-FROM pg_stat_activity 
+    query
+FROM pg_stat_activity
 WHERE (now() - pg_stat_activity.query_start) > interval '5 minutes';
 ```
 
 #### Compression Issues
 ```sql
 -- Check failed compression jobs
-SELECT * FROM timescaledb_information.job_stats 
+SELECT * FROM timescaledb_information.job_stats
 WHERE job_type = 'compression' AND last_run_success = false;
 
 -- Retry failed compression
-SELECT run_job(job_id) 
-FROM timescaledb_information.jobs 
+SELECT run_job(job_id)
+FROM timescaledb_information.jobs
 WHERE job_type = 'compression';
 ```
 
 #### Storage Issues
 ```sql
 -- Check tablespace usage
-SELECT 
+SELECT
     spcname as tablespace_name,
     pg_size_pretty(pg_tablespace_size(spcname)) as size
 FROM pg_tablespace;
 
 -- Find largest chunks
-SELECT 
+SELECT
     chunk_name,
     pg_size_pretty(chunk_size) as size,
     tablespace_name
-FROM timescaledb_information.chunks 
-ORDER BY chunk_size DESC 
+FROM timescaledb_information.chunks
+ORDER BY chunk_size DESC
 LIMIT 10;
 ```
 
@@ -374,8 +375,8 @@ LIMIT 10;
 ### Emergency Compression (SSD Full)
 ```sql
 -- Emergency compress all eligible chunks
-SELECT compress_chunk(chunk_name) 
-FROM timescaledb_information.chunks 
+SELECT compress_chunk(chunk_name)
+FROM timescaledb_information.chunks
 WHERE hypertable_name = 'user_activities'
 AND range_start < NOW() - INTERVAL '3 days'
 AND NOT is_compressed;
@@ -385,7 +386,7 @@ AND NOT is_compressed;
 ```sql
 -- Move older chunks to HDD immediately
 SELECT move_chunk(chunk_name, 'hdd_cold')
-FROM timescaledb_information.chunks 
+FROM timescaledb_information.chunks
 WHERE hypertable_name = 'user_activities'
 AND range_start < NOW() - INTERVAL '14 days'
 AND tablespace_name = 'ssd_hot';
@@ -393,7 +394,7 @@ AND tablespace_name = 'ssd_hot';
 
 ---
 
-**Document Version**: 1.0  
-**Created**: 2025-08-13  
-**Last Updated**: 2025-08-13  
+**Document Version**: 1.0
+**Created**: 2025-08-13
+**Last Updated**: 2025-08-13
 **Status**: Production Ready

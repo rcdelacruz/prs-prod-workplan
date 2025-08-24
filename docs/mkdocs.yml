@@ -92,6 +92,7 @@ nav:
   - Deployment:
     - Deployment Process: deployment/process.md
     - Custom Domain Setup: deployment/custom-domain.md
+    - IT Coordination Guide: deployment/it-coordination.md
     - Testing & Validation: deployment/testing.md
     - Troubleshooting: deployment/troubleshooting.md
   - Database Management:

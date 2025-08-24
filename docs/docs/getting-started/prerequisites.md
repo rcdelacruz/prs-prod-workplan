@@ -114,9 +114,11 @@ sudo netplan apply
 ### 4. Domain DNS Setup
 
 #### For GoDaddy Domain (Recommended):
-1. **Point domain to server IP** in GoDaddy DNS
-2. **Create A record**: `prs.citylandcondo.com` → `192.168.0.100`
-3. **SSL automation** available post-deployment
+1. **Point domain to office public IP** in GoDaddy DNS
+2. **Create A record**: `prs.citylandcondo.com` → `[Office Public IP]` (NOT 192.168.0.100)
+3. **Configure port forwarding**: Port 80 → 192.168.0.100:80 (temporary, for SSL cert generation)
+4. **Optional internal DNS**: `prs.citylandcondo.com` → `192.168.0.100` (for office network performance)
+5. **SSL automation** available post-deployment with IT coordination
 
 #### For Local Domain:
 1. **Use local DNS** or hosts file
@@ -230,6 +232,27 @@ gh auth login
 
 !!! warning "GitHub Authentication Required"
     The deploy script needs access to private repositories. You must complete `gh auth login` before deployment.
+
+### 3. Clone PRS Deployment Repository (REQUIRED)
+
+```bash
+# Create base directory
+sudo mkdir -p /opt/prs
+sudo chown $USER:$USER /opt/prs
+
+# Clone the deployment repository
+cd /opt/prs
+git clone https://github.com/stratpoint-engineering/prs-deployment.git
+
+# Navigate to scripts directory
+cd prs-deployment/scripts
+
+# Make scripts executable
+chmod +x *.sh
+```
+
+!!! info "Repository Structure"
+    The deploy script expects `/opt/prs` as the base directory and will create additional application repositories there during deployment. The `prs-deployment` repository contains all the deployment scripts and configuration.
 
 ---
 

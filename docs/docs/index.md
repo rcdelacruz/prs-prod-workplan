@@ -28,6 +28,11 @@ This documentation provides complete guidance for deploying, configuring, and ma
 **[📖 Quick Start Guide](getting-started/quick-start.md)** - Simple 3-step process using proven scripts
 
 ```bash
+# Clone deployment repository first:
+sudo mkdir -p /opt/prs && sudo chown $USER:$USER /opt/prs
+cd /opt/prs && git clone https://github.com/stratpoint-engineering/prs-deployment.git
+cd prs-deployment/scripts
+
 # Prerequisites check:
 ./check-prerequisites.sh
 
@@ -38,12 +43,12 @@ This documentation provides complete guidance for deploying, configuring, and ma
 ```
 
 **What you get:**
-- ✅ Complete PRS application stack
-- ✅ SSL/TLS security (GoDaddy/Let's Encrypt/Self-signed)
-- ✅ Enterprise backup with NAS integration
-- ✅ Grafana monitoring and alerting
-- ✅ Automated maintenance and health checks
-- ✅ Office network security configuration
+- Complete PRS application stack
+- SSL/TLS security (GoDaddy/Let's Encrypt/Self-signed)
+- Enterprise backup with NAS integration
+- Grafana monitoring and alerting
+- Automated maintenance and health checks
+- Office network security configuration (192.168.0.0/20 internal access only)
 
 ### 📋 Manual Deployment
 

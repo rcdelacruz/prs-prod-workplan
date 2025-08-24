@@ -13,25 +13,25 @@ graph TB
     subgraph "Application Layer"
         APP[PRS Application] --> QUERY[SQL Queries]
     end
-    
+
     subgraph "TimescaleDB Engine"
         QUERY --> PLANNER[Query Planner]
         PLANNER --> HOT[Hot Chunks<br/>0-30 days]
         PLANNER --> COLD[Cold Chunks<br/>30+ days]
     end
-    
+
     subgraph "Storage Tiers"
         HOT --> SSD[SSD Storage<br/>ssd_hot tablespace<br/>/mnt/ssd/postgresql-hot]
         COLD --> HDD[HDD Storage<br/>hdd_cold tablespace<br/>/mnt/hdd/postgresql-cold]
     end
-    
+
     subgraph "Data Lifecycle"
         NEW[New Data] --> SSD
         SSD --> COMPRESS[Auto Compress<br/>7-30 days]
         COMPRESS --> MOVE[Auto Move<br/>30+ days]
         MOVE --> HDD
     end
-    
+
     style SSD fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     style HDD fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px
     style COMPRESS fill:#fff3e0,stroke:#ff9800,stroke-width:2px
@@ -40,14 +40,22 @@ graph TB
 
 ### Configuration
 
-The PRS system uses **36 hypertables** with optimized compression policies:
+The PRS system uses **38 hypertables** with optimized compression policies based on the actual migration implementation:
 
-| Table Category | Tables | Compression After | Storage Strategy |
-|----------------|--------|-------------------|------------------|
-| **High-Volume** | `notifications`, `audit_logs`, `histories`, `comments` | 7 days | Aggressive compression |
-| **History Tables** | All `*_histories` tables | 14 days | Balanced compression |
-| **Business Tables** | `requisitions`, `purchase_orders`, `delivery_receipts` | 30 days | Performance-focused |
-| **Workflow Tables** | `*_approvers`, `*_badges`, `canvass_*` | 60 days | Long-term optimization |
+| Table Category | Tables | Chunk Interval | Priority | Storage Strategy |
+|----------------|--------|----------------|----------|------------------|
+| **Core Business** | `requisitions`, `purchase_orders`, `delivery_receipts`, `delivery_receipt_items`, `rs_payment_requests`, `canvass_requisitions` | 1 month | CORE | Performance-focused |
+| **High-Volume** | `audit_logs`, `notifications`, `notes`, `comments` | 1 week | HIGH_VOLUME | Aggressive compression |
+| **Critical Workflow** | `requisition_badges`, `requisition_approvers`, `attachments`, `histories` | 1 month/1 week | CRITICAL | Balanced optimization |
+| **History Tables** | `*_histories` tables (8 tables) | 1 week | HIGH/MEDIUM | Audit trail optimization |
+| **Workflow Tables** | `*_approvers`, `*_items`, `canvass_*` | 1 month | MEDIUM/HIGH | Long-term optimization |
+
+**Complete list of 38 hypertables:**
+- Core: `requisitions`, `purchase_orders`, `delivery_receipts`, `delivery_receipt_items`, `rs_payment_requests`, `canvass_requisitions`
+- High-volume: `audit_logs`, `notifications`, `notes`, `comments`, `force_close_logs`
+- Critical: `requisition_badges`, `requisition_approvers`, `attachments`, `histories`
+- History tables: `requisition_canvass_histories`, `requisition_item_histories`, `requisition_order_histories`, `requisition_delivery_histories`, `requisition_payment_histories`, `requisition_return_histories`, `non_requisition_histories`, `invoice_report_histories`, `delivery_receipt_items_history`
+- Workflow: `canvass_item_suppliers`, `canvass_approvers`, `requisition_item_lists`, `canvass_items`, `purchase_order_items`, `purchase_order_approvers`, `non_requisitions`, `rs_payment_request_approvers`, `non_requisition_approvers`, `non_requisition_items`, `delivery_receipt_invoices`, `invoice_reports`, `gate_passes`, `purchase_order_cancelled_items`
 
 ## Configuration
 
@@ -56,7 +64,7 @@ The PRS system uses **36 hypertables** with optimized compression policies:
 ```sql
 -- Memory Settings
 shared_buffers = 2GB                    -- 33% of allocated RAM
-effective_cache_size = 4GB              -- 67% of allocated RAM  
+effective_cache_size = 4GB              -- 67% of allocated RAM
 work_mem = 32MB                         -- For complex queries
 maintenance_work_mem = 512MB            -- For maintenance operations
 
@@ -110,10 +118,10 @@ ALTER DATABASE prs SET default_tablespace = ssd_hot;
 
 ```sql
 -- Check tablespace usage
-SELECT 
+SELECT
     spcname as tablespace_name,
     pg_size_pretty(pg_tablespace_size(spcname)) as size,
-    CASE 
+    CASE
         WHEN spcname = 'ssd_hot' THEN 'SSD Storage'
         WHEN spcname = 'hdd_cold' THEN 'HDD Storage'
         ELSE 'Default'
@@ -147,12 +155,12 @@ SELECT add_compression_policy('delivery_receipts', INTERVAL '30 days');
 
 ```sql
 -- Check compression statistics
-SELECT 
+SELECT
     hypertable_name,
     pg_size_pretty(before_compression_total_bytes) as before_compression,
     pg_size_pretty(after_compression_total_bytes) as after_compression,
     round(
-        (before_compression_total_bytes::numeric - after_compression_total_bytes::numeric) 
+        (before_compression_total_bytes::numeric - after_compression_total_bytes::numeric)
         / before_compression_total_bytes::numeric * 100, 2
     ) as compression_ratio_percent
 FROM timescaledb_information.compressed_hypertable_stats;
@@ -185,7 +193,7 @@ SELECT move_chunk(
 
 -- Move all old chunks for a table
 SELECT move_chunk(chunk_name, 'hdd_cold')
-FROM timescaledb_information.chunks 
+FROM timescaledb_information.chunks
 WHERE hypertable_name = 'notifications'
 AND range_start < NOW() - INTERVAL '30 days'
 AND tablespace_name = 'ssd_hot';
@@ -197,11 +205,11 @@ AND tablespace_name = 'ssd_hot';
 
 ```sql
 -- Time-based queries are automatically optimized
-SELECT COUNT(*) FROM notifications 
+SELECT COUNT(*) FROM notifications
 WHERE created_at >= NOW() - INTERVAL '30 days';
 -- Execution time: ~50ms (SSD data)
 
-SELECT COUNT(*) FROM notifications 
+SELECT COUNT(*) FROM notifications
 WHERE created_at >= NOW() - INTERVAL '6 months';
 -- Execution time: ~2s (includes HDD data)
 ```
@@ -210,12 +218,12 @@ WHERE created_at >= NOW() - INTERVAL '6 months';
 
 ```sql
 -- Create time-based indexes for better performance
-CREATE INDEX CONCURRENTLY idx_notifications_time_user 
+CREATE INDEX CONCURRENTLY idx_notifications_time_user
 ON notifications (created_at DESC, user_id);
 
 -- Create partial indexes for hot data
-CREATE INDEX CONCURRENTLY idx_notifications_recent 
-ON notifications (user_id, created_at DESC) 
+CREATE INDEX CONCURRENTLY idx_notifications_recent
+ON notifications (user_id, created_at DESC)
 WHERE created_at >= NOW() - INTERVAL '30 days';
 ```
 
@@ -225,7 +233,7 @@ WHERE created_at >= NOW() - INTERVAL '30 days';
 -- Create continuous aggregate for daily summaries
 CREATE MATERIALIZED VIEW daily_activity_summary
 WITH (timescaledb.continuous) AS
-SELECT 
+SELECT
     time_bucket('1 day', created_at) AS day,
     COUNT(*) as total_activities,
     COUNT(DISTINCT user_id) as unique_users
@@ -247,7 +255,7 @@ SELECT add_continuous_aggregate_policy(
 
 ```sql
 -- View chunk distribution across storage tiers
-SELECT 
+SELECT
     hypertable_name,
     chunk_name,
     chunk_schema,
@@ -256,7 +264,7 @@ SELECT
     pg_size_pretty(chunk_size) as size,
     is_compressed,
     tablespace_name,
-    CASE 
+    CASE
         WHEN tablespace_name = 'ssd_hot' THEN 'SSD'
         WHEN tablespace_name = 'hdd_cold' THEN 'HDD'
         ELSE 'Default'
@@ -271,7 +279,7 @@ LIMIT 20;
 
 ```sql
 -- Check compression and movement job status
-SELECT 
+SELECT
     job_id,
     application_name,
     schedule_interval,
@@ -285,7 +293,7 @@ SELECT
     total_successes,
     total_failures
 FROM timescaledb_information.jobs
-WHERE application_name LIKE '%compression%' 
+WHERE application_name LIKE '%compression%'
    OR application_name LIKE '%move%';
 ```
 
@@ -293,7 +301,7 @@ WHERE application_name LIKE '%compression%'
 
 ```sql
 -- Analyze storage usage by hypertable
-SELECT 
+SELECT
     hypertable_name,
     num_chunks,
     pg_size_pretty(table_size) as table_size,
@@ -338,7 +346,7 @@ ANALYZE audit_logs;
 ANALYZE requisitions;
 
 -- Check for failed background jobs
-SELECT * FROM timescaledb_information.job_stats 
+SELECT * FROM timescaledb_information.job_stats
 WHERE last_run_success = false;
 ```
 
@@ -346,11 +354,11 @@ WHERE last_run_success = false;
 
 ```sql
 -- Vacuum and analyze all hypertables
-SELECT format('VACUUM ANALYZE %I;', hypertable_name) 
+SELECT format('VACUUM ANALYZE %I;', hypertable_name)
 FROM timescaledb_information.hypertables;
 
 -- Update statistics for all hypertables
-SELECT update_stats(hypertable_name) 
+SELECT update_stats(hypertable_name)
 FROM timescaledb_information.hypertables;
 ```
 
@@ -360,8 +368,8 @@ FROM timescaledb_information.hypertables;
 
 ```sql
 -- Emergency compress all eligible chunks
-SELECT compress_chunk(chunk_name) 
-FROM timescaledb_information.chunks 
+SELECT compress_chunk(chunk_name)
+FROM timescaledb_information.chunks
 WHERE range_start < NOW() - INTERVAL '3 days'
 AND NOT is_compressed
 AND tablespace_name = 'ssd_hot';
@@ -372,7 +380,7 @@ AND tablespace_name = 'ssd_hot';
 ```sql
 -- Move older chunks to HDD immediately
 SELECT move_chunk(chunk_name, 'hdd_cold')
-FROM timescaledb_information.chunks 
+FROM timescaledb_information.chunks
 WHERE range_start < NOW() - INTERVAL '14 days'
 AND tablespace_name = 'ssd_hot';
 ```
@@ -384,6 +392,6 @@ AND tablespace_name = 'ssd_hot';
 
 !!! tip "Performance Characteristics"
     - **Recent Data (SSD)**: <50ms query time
-    - **Historical Data (HDD)**: <2s query time  
+    - **Historical Data (HDD)**: <2s query time
     - **Compressed Data**: 60-80% space savings
     - **Zero Data Loss**: Complete compliance with zero-deletion policy

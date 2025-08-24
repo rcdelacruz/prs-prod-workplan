@@ -129,6 +129,62 @@ configure_environment() {
     sed -i "s|^CORS_ORIGIN=.*|CORS_ORIGIN=https://$domain,http://192.168.0.0/20|" "$env_file"
 
     print_success "Environment configuration updated"
+}
+
+# Function to configure repositories
+configure_repositories() {
+    echo ""
+    echo -e "${BLUE}Repository Configuration${NC}"
+    echo ""
+
+    local env_file="$PROJECT_DIR/02-docker-configuration/.env"
+
+    # Get current repository URLs
+    local current_backend_url=$(grep "^BACKEND_REPO_URL=" "$env_file" 2>/dev/null | cut -d'=' -f2 || echo "https://github.com/your-org/prs-backend-a.git")
+    local current_frontend_url=$(grep "^FRONTEND_REPO_URL=" "$env_file" 2>/dev/null | cut -d'=' -f2 || echo "https://github.com/your-org/prs-frontend-a.git")
+    local current_backend_branch=$(grep "^BACKEND_BRANCH=" "$env_file" 2>/dev/null | cut -d'=' -f2 || echo "main")
+    local current_frontend_branch=$(grep "^FRONTEND_BRANCH=" "$env_file" 2>/dev/null | cut -d'=' -f2 || echo "main")
+
+    echo "Configure the repository URLs and branches for backend and frontend applications:"
+    echo ""
+
+    # Backend repository
+    prompt_with_default "Backend repository URL" "$current_backend_url" "backend_repo_url"
+    prompt_with_default "Backend branch" "$current_backend_branch" "backend_branch"
+
+    # Frontend repository
+    prompt_with_default "Frontend repository URL" "$current_frontend_url" "frontend_repo_url"
+    prompt_with_default "Frontend branch" "$current_frontend_branch" "frontend_branch"
+
+    # Update repository configuration in .env file
+    sed -i "s|^BACKEND_REPO_URL=.*|BACKEND_REPO_URL=$backend_repo_url|" "$env_file"
+    sed -i "s|^FRONTEND_REPO_URL=.*|FRONTEND_REPO_URL=$frontend_repo_url|" "$env_file"
+
+    # Update or add branch configuration
+    if grep -q "^BACKEND_BRANCH=" "$env_file"; then
+        sed -i "s|^BACKEND_BRANCH=.*|BACKEND_BRANCH=$backend_branch|" "$env_file"
+    else
+        # Add BACKEND_BRANCH after FRONTEND_REPO_URL
+        sed -i "/^FRONTEND_REPO_URL=/a\\BACKEND_BRANCH=$backend_branch" "$env_file"
+    fi
+
+    if grep -q "^FRONTEND_BRANCH=" "$env_file"; then
+        sed -i "s|^FRONTEND_BRANCH=.*|FRONTEND_BRANCH=$frontend_branch|" "$env_file"
+    else
+        # Add FRONTEND_BRANCH after BACKEND_BRANCH
+        sed -i "/^BACKEND_BRANCH=/a\\FRONTEND_BRANCH=$frontend_branch" "$env_file"
+    fi
+
+    # Remove old GIT_BRANCH if it exists
+    sed -i "/^GIT_BRANCH=/d" "$env_file"
+
+    print_success "Repository configuration updated"
+
+    # Store repository summary
+    echo ""
+    echo -e "${BLUE}Repository Summary:${NC}"
+    echo "  Backend URL: $backend_repo_url (branch: $backend_branch)"
+    echo "  Frontend URL: $frontend_repo_url (branch: $frontend_branch)"
 
     # Store configuration summary
     echo ""
@@ -217,8 +273,8 @@ show_next_steps() {
     echo "   ./setup-backup-automation.sh"
     echo "   ./setup-monitoring-automation.sh"
     echo ""
-    echo -e "${YELLOW}4. Access your system:${NC}"
-    echo "   Main App: https://$domain"
+    echo -e "${YELLOW}4. Access your system (office network 192.168.0.0/20 only):${NC}"
+    echo "   Main App: https://$domain (office network only)"
     echo "   Grafana:  http://$server_ip:3000 (office network only)"
     echo "   Adminer:  http://$server_ip:8080 (office network only)"
     echo "   Portainer: http://$server_ip:9000 (office network only)"
@@ -239,6 +295,7 @@ main() {
     echo ""
 
     configure_environment
+    configure_repositories
     configure_nas
     show_next_steps
 }

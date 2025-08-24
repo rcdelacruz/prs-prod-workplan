@@ -829,6 +829,17 @@ load_environment() {
     set +a
 
     log_info "Environment loaded from $ENV_FILE"
+
+    # Verify repository configuration
+    if [ -n "${BACKEND_REPO_URL:-}" ] && [ -n "${FRONTEND_REPO_URL:-}" ]; then
+        log_info "Repository configuration:"
+        log_info "  Backend: $BACKEND_REPO_URL (branch: ${BACKEND_BRANCH:-main})"
+        log_info "  Frontend: $FRONTEND_REPO_URL (branch: ${FRONTEND_BRANCH:-main})"
+        log_info "  Base directory: ${REPO_BASE_DIR:-/opt/prs}"
+    else
+        log_warning "Repository URLs not configured in environment file"
+        log_info "Using default repository URLs"
+    fi
 }
 
 # Clone repositories
@@ -836,6 +847,14 @@ clone_repositories() {
     log_info "Cloning application repositories..."
     log_info "Backend repo: $BACKEND_REPO_URL (branch: $BACKEND_BRANCH)"
     log_info "Frontend repo: $FRONTEND_REPO_URL (branch: $FRONTEND_BRANCH)"
+
+    # Validate repository URLs
+    if [[ "$BACKEND_REPO_URL" == *"your-org"* ]] || [[ "$FRONTEND_REPO_URL" == *"your-org"* ]]; then
+        log_error "Repository URLs contain placeholder values (your-org)"
+        log_error "Please update BACKEND_REPO_URL and FRONTEND_REPO_URL in $ENV_FILE"
+        log_info "Example: BACKEND_REPO_URL=https://github.com/yourusername/prs-backend-a.git"
+        exit 1
+    fi
 
     # Create repositories directory
     sudo mkdir -p "$REPO_BASE_DIR"
