@@ -773,6 +773,40 @@ EOF
     log_success "SSL certificates setup completed"
 }
 
+# Setup monitoring prerequisites
+setup_monitoring_prerequisites() {
+    log_info "Setting up monitoring prerequisites..."
+
+    # Check if database container is running
+    if ! docker ps | grep -q "prs-onprem-postgres-timescale"; then
+        log_warning "PostgreSQL container is not running. Monitoring setup may fail."
+        return 0
+    fi
+
+    # Wait for database to be ready
+    timeout 30 bash -c 'until docker exec prs-onprem-postgres-timescale pg_isready -U prs_user >/dev/null 2>&1; do sleep 2; done' || {
+        log_warning "Database not ready, skipping Grafana database setup"
+        return 0
+    }
+
+    # Create Grafana database if it doesn't exist (required for Grafana to start)
+    log_info "Ensuring Grafana database exists..."
+    local grafana_db_exists=$(docker exec prs-onprem-postgres-timescale bash -c "PGPASSWORD=\$POSTGRES_PASSWORD psql -U \$POSTGRES_USER -d \$POSTGRES_DB -t -c \"SELECT 1 FROM pg_database WHERE datname='grafana';\"" 2>/dev/null | tr -d ' ' || echo "")
+
+    if [ -z "$grafana_db_exists" ]; then
+        log_info "Creating Grafana database..."
+        if docker exec prs-onprem-postgres-timescale bash -c "PGPASSWORD=\$POSTGRES_PASSWORD psql -U \$POSTGRES_USER -d \$POSTGRES_DB -c 'CREATE DATABASE grafana;'" >/dev/null 2>&1; then
+            log_success "Grafana database created successfully"
+        else
+            log_warning "Failed to create Grafana database - Grafana may not start properly"
+        fi
+    else
+        log_info "Grafana database already exists"
+    fi
+
+    log_success "Monitoring prerequisites setup completed"
+}
+
 # Function to reset database if password mismatch
 reset_database() {
     log_info "Resetting database due to password mismatch..."
@@ -1244,6 +1278,180 @@ build_images() {
     log_success "Docker images ready"
 }
 
+# Build backend Docker image only
+build_backend_image() {
+    log_info "Building backend Docker image..."
+    log_info "Detected architecture: $(uname -m) -> Docker platform: $DOCKER_PLATFORM"
+
+    # Check docker permissions first
+    if ! check_docker_permissions; then
+        # Set docker command based on permissions
+        if [ "${USE_SUDO_DOCKER:-0}" = "1" ]; then
+            DOCKER_CMD="sudo docker"
+            log_warning "Using sudo for docker commands due to permission issues"
+        else
+            log_error "Docker permission check failed"
+            exit 1
+        fi
+    else
+        DOCKER_CMD="docker"
+    fi
+
+    # Check if buildx is available or if we have a flag to disable BuildKit
+    if [ -f /tmp/disable_buildkit ] || ! docker buildx version >/dev/null 2>&1; then
+        log_warning "Docker buildx not available, disabling BuildKit for this session"
+        export DOCKER_BUILDKIT=0
+        export COMPOSE_DOCKER_CLI_BUILD=0
+    else
+        log_info "Using Docker BuildKit for optimized builds"
+        export DOCKER_BUILDKIT=1
+        export COMPOSE_DOCKER_CLI_BUILD=1
+    fi
+
+    # Extract repository names from URLs
+    BACKEND_DIR_NAME=$(basename "${BACKEND_REPO_URL%.git}")
+
+    # Check if backend image already exists
+    local backend_exists=$($DOCKER_CMD images -q prs-backend:latest 2>/dev/null)
+
+    # Build backend image (only if it doesn't exist or force rebuild)
+    if [ -z "$backend_exists" ] || [ "${FORCE_REBUILD:-false}" = "true" ]; then
+        log_info "Building backend image from $REPO_BASE_DIR/$BACKEND_DIR_NAME..."
+
+        # Determine which Dockerfile to use
+        local dockerfile_path
+        if [ "${USE_FALLBACK_DOCKERFILE:-false}" = "true" ]; then
+            dockerfile_path="Dockerfile.debian"
+            log_info "Using fallback Debian-based Dockerfile"
+        else
+            dockerfile_path=$(get_dockerfile "$BACKEND_DIR_NAME")
+        fi
+
+        # Try building with retry logic for network issues
+        local build_attempts=0
+        local max_attempts=3
+        while [ $build_attempts -lt $max_attempts ]; do
+            build_attempts=$((build_attempts + 1))
+            log_info "Backend build attempt $build_attempts/$max_attempts using $dockerfile_path..."
+
+            # Get environment-specific image tag
+            local backend_tag=$(get_image_tag "prs-backend")
+
+            if $DOCKER_CMD build --no-cache --platform $DOCKER_PLATFORM -f "$REPO_BASE_DIR/$BACKEND_DIR_NAME/$dockerfile_path" -t "$backend_tag" "$REPO_BASE_DIR/$BACKEND_DIR_NAME"; then
+                log_success "Backend image built successfully"
+                break
+            else
+                if [ $build_attempts -lt $max_attempts ]; then
+                    log_warning "Backend build failed, retrying in 30 seconds..."
+                    sleep 30
+                else
+                    log_error "Backend build failed after $max_attempts attempts"
+                    log_error "This might be due to network issues or missing dependencies"
+                    log_info "Try running with USE_FALLBACK_DOCKERFILE=true if using Alpine-based build"
+                    exit 1
+                fi
+            fi
+        done
+    else
+        log_info "Backend image already exists, skipping build (use FORCE_REBUILD=true to rebuild)"
+    fi
+
+    log_success "Backend Docker image ready"
+}
+
+# Build frontend Docker image only
+build_frontend_image() {
+    log_info "Building frontend Docker image..."
+    log_info "Detected architecture: $(uname -m) -> Docker platform: $DOCKER_PLATFORM"
+
+    # Check docker permissions first
+    if ! check_docker_permissions; then
+        # Set docker command based on permissions
+        if [ "${USE_SUDO_DOCKER:-0}" = "1" ]; then
+            DOCKER_CMD="sudo docker"
+            log_warning "Using sudo for docker commands due to permission issues"
+        else
+            log_error "Docker permission check failed"
+            exit 1
+        fi
+    else
+        DOCKER_CMD="docker"
+    fi
+
+    # Check if buildx is available or if we have a flag to disable BuildKit
+    if [ -f /tmp/disable_buildkit ] || ! docker buildx version >/dev/null 2>&1; then
+        log_warning "Docker buildx not available, disabling BuildKit for this session"
+        export DOCKER_BUILDKIT=0
+        export COMPOSE_DOCKER_CLI_BUILD=0
+    else
+        log_info "Using Docker BuildKit for optimized builds"
+        export DOCKER_BUILDKIT=1
+        export COMPOSE_DOCKER_CLI_BUILD=1
+    fi
+
+    # Extract repository names from URLs
+    FRONTEND_DIR_NAME=$(basename "${FRONTEND_REPO_URL%.git}")
+
+    # Check if frontend image already exists
+    local frontend_exists=$($DOCKER_CMD images -q prs-frontend:latest 2>/dev/null)
+
+    # Build frontend image (only if it doesn't exist or force rebuild)
+    if [ -z "$frontend_exists" ] || [ "${FORCE_REBUILD:-false}" = "true" ]; then
+        log_info "Building frontend image from $REPO_BASE_DIR/$FRONTEND_DIR_NAME..."
+
+        # Get environment-specific Dockerfile
+        local frontend_dockerfile=$(get_dockerfile "$FRONTEND_DIR_NAME")
+
+        # Get environment-specific image tag
+        local frontend_tag=$(get_image_tag "prs-frontend")
+
+        # Try building with retry logic for network issues
+        local build_attempts=0
+        local max_attempts=3
+        while [ $build_attempts -lt $max_attempts ]; do
+            build_attempts=$((build_attempts + 1))
+            log_info "Frontend build attempt $build_attempts/$max_attempts..."
+
+            # Prepare build arguments for frontend
+            local build_args=""
+            if [ -f "$ENV_FILE" ]; then
+                # Source environment file to get build arguments
+                source "$ENV_FILE"
+
+                # Add build arguments (empty values enable dynamic host detection)
+                build_args="$build_args --build-arg VITE_APP_API_URL=${VITE_APP_API_URL:-}"
+                build_args="$build_args --build-arg VITE_APP_UPLOAD_URL=${VITE_APP_UPLOAD_URL:-}"
+                if [ -n "${VITE_APP_ENVIRONMENT:-}" ]; then
+                    build_args="$build_args --build-arg VITE_APP_ENVIRONMENT=$VITE_APP_ENVIRONMENT"
+                else
+                    build_args="$build_args --build-arg VITE_APP_ENVIRONMENT=$DEPLOY_ENV"
+                fi
+                if [ -n "${VITE_APP_ENABLE_DEVTOOLS:-}" ]; then
+                    build_args="$build_args --build-arg VITE_APP_ENABLE_DEVTOOLS=$VITE_APP_ENABLE_DEVTOOLS"
+                fi
+            fi
+
+            if $DOCKER_CMD build --no-cache --platform $DOCKER_PLATFORM -f "$REPO_BASE_DIR/$FRONTEND_DIR_NAME/$frontend_dockerfile" $build_args -t "$frontend_tag" "$REPO_BASE_DIR/$FRONTEND_DIR_NAME"; then
+                log_success "Frontend image built successfully"
+                break
+            else
+                if [ $build_attempts -lt $max_attempts ]; then
+                    log_warning "Frontend build failed, retrying in 30 seconds..."
+                    sleep 30
+                else
+                    log_error "Frontend build failed after $max_attempts attempts"
+                    log_error "This might be due to network issues or missing dependencies"
+                    exit 1
+                fi
+            fi
+        done
+    else
+        log_info "Frontend image already exists, skipping build (use FORCE_REBUILD=true to rebuild)"
+    fi
+
+    log_success "Frontend Docker image ready"
+}
+
 # Start services
 start_services() {
     log_info "Starting services for $DEPLOY_ENV environment..."
@@ -1288,6 +1496,8 @@ start_services() {
     # Start monitoring services (only for prod/staging environments)
     if [ "$DEPLOY_ENV" = "prod" ] || [ "$DEPLOY_ENV" = "staging" ]; then
         if ! echo "$running_services" | grep -q "prometheus\|grafana"; then
+            log_info "Setting up monitoring prerequisites..."
+            setup_monitoring_prerequisites
             log_info "Starting monitoring services..."
             docker compose -f "$compose_file_name" --profile monitoring up -d
         else
@@ -1374,6 +1584,7 @@ init_users_database() {
 
     log_success "Database initialized"
 }
+
 
 # Database access functions
 db_connect() {
@@ -1562,6 +1773,8 @@ show_usage() {
     echo "  setup               Setup system (dependencies, storage, firewall) - idempotent"
     echo "  install-buildx      Install/fix Docker buildx plugin - idempotent"
     echo "  build               Build Docker images - idempotent (use FORCE_REBUILD=true to force)"
+    echo "  build-backend       Build backend Docker image only - idempotent"
+    echo "  build-frontend      Build frontend Docker image only - idempotent"
     echo "  start               Start services - idempotent"
     echo "  stop                Stop services"
     echo "  restart             Restart services"
@@ -1607,6 +1820,8 @@ show_usage() {
     echo "  DEPLOY_ENV=staging $0 deploy                 # Deploy to staging environment"
     echo "  $0 check-state                               # Check what has been completed"
     echo "  FORCE_REBUILD=true $0 build                  # Force rebuild of images"
+    echo "  $0 build-frontend                            # Build only frontend image"
+    echo "  $0 build-backend                             # Build only backend image"
     echo "  USE_FALLBACK_DOCKERFILE=true $0 build        # Use Debian-based Dockerfile if Alpine fails"
     echo "  DEPLOY_ENV=dev BACKEND_REPO_URL=https://github.com/user/my-backend.git $0 deploy"
     echo "  DEPLOY_ENV=staging $0 status                 # Check staging environment status"
@@ -1707,6 +1922,18 @@ case "${1:-deploy}" in
         load_environment
         clone_repositories
         build_images
+        ;;
+    "build-backend")
+        check_prerequisites
+        load_environment
+        clone_repositories
+        build_backend_image
+        ;;
+    "build-frontend")
+        check_prerequisites
+        load_environment
+        clone_repositories
+        build_frontend_image
         ;;
     "init-db")
         load_environment
