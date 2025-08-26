@@ -20,7 +20,7 @@
 # Database Data and Backups
 data/
 backups/
-*.sql
+# *.sql
 *.dump
 *.backup
 
