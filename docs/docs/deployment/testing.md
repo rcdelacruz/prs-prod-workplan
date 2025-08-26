@@ -15,7 +15,7 @@ This guide provides comprehensive testing procedures to validate your PRS on-pre
 ./scripts/system-health-check.sh --comprehensive
 
 # Storage performance testing
-sudo fio --name=ssd-test --filename=/mnt/ssd/test --size=1G --rw=randwrite --bs=4k --numjobs=4 --time_based --runtime=60
+sudo fio --name=ssd-test --filename=/mnt/hdd/test --size=1G --rw=randwrite --bs=4k --numjobs=4 --time_based --runtime=60
 sudo fio --name=hdd-test --filename=/mnt/hdd/test --size=1G --rw=randwrite --bs=64k --numjobs=2 --time_based --runtime=60
 
 # Network performance testing
@@ -334,8 +334,8 @@ SELECT
     hypertable_name,
     COUNT(*) as total_chunks,
     COUNT(*) FILTER (WHERE is_compressed) as compressed_chunks,
-    COUNT(*) FILTER (WHERE tablespace_name = 'ssd_hot') as ssd_chunks,
-    COUNT(*) FILTER (WHERE tablespace_name = 'hdd_cold') as hdd_chunks
+    COUNT(*) FILTER (WHERE tablespace_name = 'pg_default') as ssd_chunks,
+    COUNT(*) FILTER (WHERE tablespace_name = 'pg_default') as hdd_chunks
 FROM timescaledb_information.chunks
 GROUP BY hypertable_name;
 ```

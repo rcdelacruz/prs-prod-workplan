@@ -79,6 +79,7 @@ install_mkdocs() {
 
 # Function to serve documentation
 serve_docs() {
+
     local host="${1:-127.0.0.1}"
     local port="${2:-8000}"
 
@@ -105,6 +106,69 @@ build_docs() {
     print_status "Static files available in: $SCRIPT_DIR/site/"
 }
 
+# Function to deploy to GitHub Pages
+deploy_docs() {
+    print_status "Deploying documentation to GitHub Pages..."
+
+    # Check if we're in a git repository
+    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+        print_error "Not in a git repository. GitHub Pages deployment requires git."
+        exit 1
+    fi
+
+    # Check if there are uncommitted changes
+    if ! git diff-index --quiet HEAD --; then
+        print_warning "You have uncommitted changes."
+        read -p "Do you want to continue with deployment? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_status "Deployment cancelled."
+            exit 0
+        fi
+    fi
+
+    # Check if origin remote exists
+    if ! git remote get-url origin > /dev/null 2>&1; then
+        print_error "No 'origin' remote found. Please configure your git remote."
+        exit 1
+    fi
+
+    print_status "Deploying to GitHub Pages..."
+    print_status "This will:"
+    print_status "  1. Build the documentation"
+    print_status "  2. Push to the 'gh-pages' branch"
+    print_status "  3. Make it available at your GitHub Pages URL"
+    print_status ""
+
+    source .venv/bin/activate
+
+    # Deploy with mkdocs gh-deploy
+    if mkdocs gh-deploy --clean --message "Deploy documentation {sha} via serve-docs.sh"; then
+        deactivate
+        print_success "Documentation deployed successfully to GitHub Pages!"
+        print_status ""
+        print_status "Your documentation should be available at:"
+
+        # Try to determine the GitHub Pages URL
+        local origin_url=$(git remote get-url origin)
+        if [[ $origin_url =~ github\.com[:/]([^/]+)/([^/]+)(\.git)?$ ]]; then
+            local username="${BASH_REMATCH[1]}"
+            local repo="${BASH_REMATCH[2]}"
+            repo="${repo%.git}"  # Remove .git suffix if present
+            print_status "  https://${username}.github.io/${repo}/"
+        else
+            print_status "  Check your repository's GitHub Pages settings"
+        fi
+
+        print_status ""
+        print_status "Note: It may take a few minutes for changes to appear on GitHub Pages."
+    else
+        deactivate
+        print_error "Deployment failed!"
+        exit 1
+    fi
+}
+
 # Function to show help
 show_help() {
     echo "PRS Documentation Server"
@@ -114,6 +178,7 @@ show_help() {
     echo "Commands:"
     echo "  serve     Serve documentation locally (default)"
     echo "  build     Build static documentation"
+    echo "  deploy    Deploy documentation to GitHub Pages"
     echo "  install   Install MkDocs and dependencies"
     echo "  help      Show this help message"
     echo ""
@@ -127,7 +192,15 @@ show_help() {
     echo "  $0 serve --port 8080         # Serve on localhost:8080"
     echo "  $0 serve --public            # Serve on all interfaces"
     echo "  $0 build                     # Build static site"
+    echo "  $0 deploy                    # Deploy to GitHub Pages"
     echo "  $0 install                   # Install MkDocs"
+    echo ""
+    echo "GitHub Pages Deployment:"
+    echo "  The deploy command will:"
+    echo "  - Build the documentation"
+    echo "  - Create/update the gh-pages branch"
+    echo "  - Push to GitHub for automatic deployment"
+    echo "  - Requires git repository with 'origin' remote configured"
 }
 
 # Main script logic
@@ -145,6 +218,10 @@ main() {
                 ;;
             build)
                 command="build"
+                shift
+                ;;
+            deploy)
+                command="deploy"
                 shift
                 ;;
             install)
@@ -196,6 +273,9 @@ main() {
             ;;
         build)
             build_docs
+            ;;
+        deploy)
+            deploy_docs
             ;;
         install)
             install_mkdocs

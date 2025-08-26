@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-BACKUP_DIR="/mnt/hdd/postgres-backups/daily"
+BACKUP_DIR="${STORAGE_HDD_PATH:-/mnt/hdd}/postgres-backups/daily"
 LOG_FILE="/var/log/prs-backup-verification.log"
 
 # Load environment variables

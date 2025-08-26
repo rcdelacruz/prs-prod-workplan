@@ -52,10 +52,10 @@ collect_system_metrics() {
     local memory_usage_percent=$(echo "scale=2; $memory_used * 100 / $memory_total" | bc)
     
     # Disk metrics
-    local ssd_total=$(df -B1 /mnt/ssd | awk 'NR==2 {print $2}')
-    local ssd_used=$(df -B1 /mnt/ssd | awk 'NR==2 {print $3}')
-    local ssd_available=$(df -B1 /mnt/ssd | awk 'NR==2 {print $4}')
-    local ssd_usage_percent=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+    local ssd_total=$(df -B1 /mnt/hdd | awk 'NR==2 {print $2}')
+    local ssd_used=$(df -B1 /mnt/hdd | awk 'NR==2 {print $3}')
+    local ssd_available=$(df -B1 /mnt/hdd | awk 'NR==2 {print $4}')
+    local ssd_usage_percent=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
     
     local hdd_total=$(df -B1 /mnt/hdd | awk 'NR==2 {print $2}')
     local hdd_used=$(df -B1 /mnt/hdd | awk 'NR==2 {print $3}')
@@ -179,7 +179,7 @@ EOF
 check_alerts() {
     local cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' | cut -d. -f1)
     local memory_usage=$(free | grep Mem | awk '{printf "%.0f", $3/$2 * 100.0}')
-    local ssd_usage=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+    local ssd_usage=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
     local hdd_usage=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
     local db_connections=$(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "SELECT count(*) FROM pg_stat_activity;" 2>/dev/null | xargs || echo "0")
     local api_response_time_ms=$(curl -w "%{time_total}" -o /dev/null -s https://localhost/api/health 2>/dev/null | awk '{print $1 * 1000}' || echo "0")
@@ -577,8 +577,8 @@ display_monitoring_dashboard() {
         printf "Memory: %3s%% " "$(free | grep Mem | awk '{printf "%.0f", $3/$2 * 100.0}')"
         [ "$(free | grep Mem | awk '{printf "%.0f", $3/$2 * 100.0}')" -gt 85 ] && echo "[HIGH]" || echo "[OK]"
         
-        printf "SSD:    %3s%% " "$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')"
-        [ "$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')" -gt 90 ] && echo "[HIGH]" || echo "[OK]"
+        printf "SSD:    %3s%% " "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')"
+        [ "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')" -gt 90 ] && echo "[HIGH]" || echo "[OK]"
         
         printf "HDD:    %3s%% " "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')"
         [ "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')" -gt 85 ] && echo "[HIGH]" || echo "[OK]"

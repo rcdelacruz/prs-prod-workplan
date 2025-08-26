@@ -30,7 +30,7 @@ graph TB
     end
     
     subgraph "Storage Volumes"
-        SSD[SSD Storage<br/>/mnt/ssd]
+        SSD[HDD Storage<br/>/mnt/hdd]
         HDD[HDD Storage<br/>/mnt/hdd]
     end
     
@@ -70,7 +70,7 @@ nginx:
     - ./nginx/sites-enabled:/etc/nginx/sites-enabled:ro
     - ./ssl:/etc/nginx/ssl:ro
     - uploads_data:/var/www/uploads:ro
-    - /mnt/ssd/nginx-cache:/var/cache/nginx/ssd
+    - /mnt/hdd/nginx-cache:/var/cache/nginx/ssd
   networks:
     prs_onprem_network:
       ipv4_address: 172.20.0.5
@@ -154,7 +154,7 @@ postgres:
     -c shared_preload_libraries=timescaledb
   volumes:
     - database_data:/var/lib/postgresql/data
-    - /mnt/ssd/postgresql-hot:/mnt/ssd/postgresql-hot
+    - /mnt/hdd/postgresql-hot:/mnt/hdd/postgresql-hot
     - /mnt/hdd/postgresql-cold:/mnt/hdd/postgresql-cold
     - /mnt/hdd/postgres-backups:/var/lib/postgresql/backups
   networks:
@@ -182,7 +182,7 @@ redis:
     --maxmemory-policy allkeys-lru
   volumes:
     - redis_data:/data
-    - /mnt/ssd/redis-persistence:/data/ssd
+    - /mnt/hdd/redis-persistence:/data/ssd
     - /mnt/hdd/redis-backups:/data/backups
   networks:
     prs_onprem_network:
@@ -238,7 +238,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ssd/redis-data
+      device: /mnt/hdd/redis-data
 
   # Upload files (SSD for fast access)
   uploads_data:
@@ -246,7 +246,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ssd/uploads
+      device: /mnt/hdd/uploads
 
   # Application logs (SSD for active logs)
   logs_data:
@@ -254,7 +254,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ssd/logs
+      device: /mnt/hdd/logs
 
   # Nginx cache (SSD for performance)
   nginx_cache:
@@ -262,13 +262,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ssd/nginx-cache
+      device: /mnt/hdd/nginx-cache
 ```
 
 ### Mounts
 
-Direct mounts for dual storage:
-- `/mnt/ssd/postgresql-hot` - Hot database data
+Direct mounts for HDD-only storage:
+- `/mnt/hdd/postgresql-hot` - Hot database data
 - `/mnt/hdd/postgresql-cold` - Cold database data
 - `/mnt/hdd/postgres-backups` - Database backups
 - `/mnt/hdd/app-logs-archive` - Archived logs
@@ -355,7 +355,7 @@ prometheus:
   volumes:
     - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     - prometheus_data:/prometheus
-    - /mnt/ssd/prometheus-data:/prometheus/ssd
+    - /mnt/hdd/prometheus-data:/prometheus/ssd
     - /mnt/hdd/prometheus-archive:/prometheus/archive
   networks:
     prs_onprem_network:
@@ -377,7 +377,7 @@ grafana:
   volumes:
     - grafana_data:/var/lib/grafana
     - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
-    - /mnt/ssd/grafana-data:/var/lib/grafana/ssd
+    - /mnt/hdd/grafana-data:/var/lib/grafana/ssd
   networks:
     prs_onprem_network:
       ipv4_address: 172.20.0.25
@@ -504,11 +504,11 @@ docker port prs-onprem-nginx
 docker inspect prs-onprem-backend | grep Mounts -A 20
 
 # Check volume permissions
-ls -la /mnt/ssd/uploads
+ls -la /mnt/hdd/uploads
 ls -la /mnt/hdd/postgres-backups
 
 # Fix volume permissions
-sudo chown -R 999:999 /mnt/ssd/postgresql-hot
+sudo chown -R 999:999 /mnt/hdd/postgresql-hot
 ```
 
 ### Issues
@@ -530,4 +530,4 @@ docker exec prs-onprem-backend iostat -x 1
     With proper Docker configuration, the PRS system can efficiently manage resources and provide high availability.
 
 !!! tip "Next Steps"
-    Proceed to [Database Setup](database.md) to configure TimescaleDB with dual storage.
+    Proceed to [Database Setup](database.md) to configure TimescaleDB with HDD-only storage.

@@ -30,31 +30,31 @@ main() {
 
     # Clean daily backups
     log_message "Cleaning daily backups (retention: $DAILY_RETENTION days)"
-    DELETED=$(find /mnt/hdd/postgres-backups/daily -name "prs_full_backup_*" -mtime +$DAILY_RETENTION -delete -print | wc -l)
+    DELETED=$(find ${STORAGE_HDD_PATH:-/mnt/hdd}/postgres-backups/daily -name "prs_full_backup_*" -mtime +$DAILY_RETENTION -delete -print | wc -l)
     log_message "Deleted $DELETED old daily backups"
 
     # Clean incremental backups
     log_message "Cleaning incremental backups (retention: $INCREMENTAL_RETENTION days)"
-    DELETED=$(find /mnt/hdd/postgres-backups/incremental -name "prs_incremental_backup_*" -mtime +$INCREMENTAL_RETENTION -delete -print | wc -l)
+    DELETED=$(find ${STORAGE_HDD_PATH:-/mnt/hdd}/postgres-backups/incremental -name "prs_incremental_backup_*" -mtime +$INCREMENTAL_RETENTION -delete -print | wc -l)
     log_message "Deleted $DELETED old incremental backups"
 
     # Clean application backups
     log_message "Cleaning application backups (retention: $APP_BACKUP_RETENTION days)"
-    DELETED=$(find /mnt/hdd/app-backups -maxdepth 1 -type d -name "20*" -mtime +$APP_BACKUP_RETENTION -exec rm -rf {} \; -print | wc -l)
+    DELETED=$(find ${STORAGE_HDD_PATH:-/mnt/hdd}/app-backups -maxdepth 1 -type d -name "20*" -mtime +$APP_BACKUP_RETENTION -exec rm -rf {} \; -print | wc -l)
     log_message "Deleted $DELETED old application backup directories"
 
     # Clean WAL archives
     log_message "Cleaning WAL archives (retention: $WAL_RETENTION days)"
-    DELETED=$(find /mnt/hdd/wal-archive -name "*.wal" -mtime +$WAL_RETENTION -delete -print | wc -l)
+    DELETED=$(find ${STORAGE_HDD_PATH:-/mnt/hdd}/wal-archive -name "*.wal" -mtime +$WAL_RETENTION -delete -print | wc -l)
     log_message "Deleted $DELETED old WAL files"
 
     # Report storage savings
     log_message "Backup cleanup completed"
 
     # Check remaining storage
-    BACKUP_USAGE=$(du -sh /mnt/hdd/postgres-backups | cut -f1)
-    WAL_USAGE=$(du -sh /mnt/hdd/wal-archive | cut -f1)
-    APP_USAGE=$(du -sh /mnt/hdd/app-backups | cut -f1)
+    BACKUP_USAGE=$(du -sh ${STORAGE_HDD_PATH:-/mnt/hdd}/postgres-backups | cut -f1)
+    WAL_USAGE=$(du -sh ${STORAGE_HDD_PATH:-/mnt/hdd}/wal-archive | cut -f1)
+    APP_USAGE=$(du -sh ${STORAGE_HDD_PATH:-/mnt/hdd}/app-backups | cut -f1)
 
     log_message "Current backup storage usage:"
     log_message "  Database backups: $BACKUP_USAGE"

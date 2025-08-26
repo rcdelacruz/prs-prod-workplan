@@ -20,7 +20,7 @@ fi
 if [ -z "$BACKUP_FILE" ]; then
     echo "Usage: $0 <backup-file> [target-database]"
     echo "Available backups:"
-    ls -la /mnt/hdd/postgres-backups/daily/
+    ls -la ${STORAGE_HDD_PATH:-/mnt/hdd}/postgres-backups/daily/
     exit 1
 fi
 

@@ -107,6 +107,8 @@ nav:
     - Health Checks: operations/health-checks.md
   - Maintenance:
     - Routine Maintenance: maintenance/routine.md
+    - TimescaleDB Automation: maintenance/timescaledb-automation.md
+    - TimescaleDB Quick Reference: maintenance/timescaledb-quick-reference.md
     - Updates & Upgrades: maintenance/updates.md
     - Security Patches: maintenance/security.md
     - Capacity Planning: maintenance/capacity.md

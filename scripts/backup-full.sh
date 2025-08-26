@@ -4,11 +4,12 @@
 
 set -euo pipefail
 
-# Configuration
-LOCAL_BACKUP_DIR="/mnt/hdd/postgres-backups/daily"
-NAS_BACKUP_DIR="${NAS_MOUNT_PATH:-/mnt/nas}/postgres-backups/daily"
-RETENTION_DAYS=30
-NAS_RETENTION_DAYS=90
+# Configuration (defaults - will be overridden by .env)
+LOCAL_BACKUP_DIR="${BACKUP_LOCAL_PATH:-/mnt/hdd}/postgres-backups/daily"
+NAS_BACKUP_DIR="${BACKUP_NAS_PATH:-/mnt/nas}/postgres-backups/daily"
+RETENTION_DAYS=${BACKUP_DB_REVIEW_THRESHOLD_DAYS:-30}
+ARCHIVE_THRESHOLD_DAYS=${BACKUP_ARCHIVE_THRESHOLD_DAYS:-90}
+LONGTERM_THRESHOLD_DAYS=${BACKUP_LONGTERM_THRESHOLD_DAYS:-365}
 COMPRESSION_LEVEL=9
 ENCRYPT_KEY="backup@prs.client-domain.com"
 LOG_FILE="/var/log/prs-backup.log"
@@ -19,7 +20,7 @@ NAS_HOST="${NAS_HOST:-}"
 NAS_SHARE="${NAS_SHARE:-backups}"
 NAS_USERNAME="${NAS_USERNAME:-}"
 NAS_PASSWORD="${NAS_PASSWORD:-}"
-NAS_MOUNT_PATH="${NAS_MOUNT_PATH:-/mnt/nas}"
+NAS_MOUNT_PATH="${STORAGE_NAS_PATH:-/mnt/nas}"
 
 # Database connection settings (from docker-compose)
 PGHOST="prs-onprem-postgres-timescale"
@@ -237,14 +238,23 @@ main() {
         copy_to_nas "$BACKUP_FILE" || log_message "WARNING: NAS copy failed"
     fi
 
-    # Cleanup old local backups
-    log_message "Cleaning up old local backups (retention: $RETENTION_DAYS days)"
-    find "$LOCAL_BACKUP_DIR" -name "prs_full_backup_*.sql*" -mtime +$RETENTION_DAYS -delete
+    # Zero Deletion Policy - Configurable thresholds for manual review
+    log_message "Zero deletion policy enforced - no automatic cleanup performed"
+    log_message "Configurable thresholds: Review=${RETENTION_DAYS}d, Archive=${ARCHIVE_THRESHOLD_DAYS}d, Long-term=${LONGTERM_THRESHOLD_DAYS}d"
 
-    # Cleanup old NAS backups
-    if [ "$NAS_ENABLED" = "true" ] && mountpoint -q "$NAS_MOUNT_PATH"; then
-        log_message "Cleaning up old NAS backups (retention: $NAS_RETENTION_DAYS days)"
-        find "$NAS_BACKUP_DIR" -name "prs_full_backup_*.sql*" -mtime +$NAS_RETENTION_DAYS -delete 2>/dev/null || true
+    # Report backups for different action thresholds
+    REVIEW_BACKUPS=$(find "$LOCAL_BACKUP_DIR" -name "prs_full_backup_*.sql*" -mtime +$RETENTION_DAYS | wc -l)
+    ARCHIVE_BACKUPS=$(find "$LOCAL_BACKUP_DIR" -name "prs_full_backup_*.sql*" -mtime +$ARCHIVE_THRESHOLD_DAYS | wc -l)
+    LONGTERM_BACKUPS=$(find "$LOCAL_BACKUP_DIR" -name "prs_full_backup_*.sql*" -mtime +$LONGTERM_THRESHOLD_DAYS | wc -l)
+
+    if [ "$REVIEW_BACKUPS" -gt 0 ]; then
+        log_message "INFO: Found $REVIEW_BACKUPS backups older than $RETENTION_DAYS days requiring manual review"
+    fi
+    if [ "$ARCHIVE_BACKUPS" -gt 0 ]; then
+        log_message "INFO: Found $ARCHIVE_BACKUPS backups older than $ARCHIVE_THRESHOLD_DAYS days suggested for HDD archive"
+    fi
+    if [ "$LONGTERM_BACKUPS" -gt 0 ]; then
+        log_message "INFO: Found $LONGTERM_BACKUPS backups older than $LONGTERM_THRESHOLD_DAYS days suggested for NAS long-term storage"
     fi
 
     # Send notification

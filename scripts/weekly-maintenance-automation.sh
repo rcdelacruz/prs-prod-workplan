@@ -44,16 +44,22 @@ comprehensive_database_maintenance() {
     REINDEX TABLE vendors;
     "
 
-    # Update TimescaleDB compression
-    log_message "Updating TimescaleDB compression"
-    docker exec prs-onprem-postgres-timescale psql -U "${POSTGRES_USER:-prs_user}" -d "${POSTGRES_DB:-prs_production}" -c "
-    SELECT compress_chunk(chunk_name)
-    FROM timescaledb_information.chunks
-    WHERE range_start < NOW() - INTERVAL '7 days'
-    AND NOT is_compressed
-    AND hypertable_name IN ('notifications', 'audit_logs')
-    LIMIT 20;
-    "
+    # Run comprehensive TimescaleDB optimization
+    log_message "Running comprehensive TimescaleDB optimization"
+    if [ -f "${SCRIPT_DIR}/timescaledb-auto-optimizer.sh" ]; then
+        "${SCRIPT_DIR}/timescaledb-auto-optimizer.sh" >> "$LOG_FILE" 2>&1
+        log_message "TimescaleDB auto-optimization completed"
+    else
+        # Fallback to basic compression if optimizer script not found
+        log_message "Fallback: Basic TimescaleDB compression"
+        docker exec prs-onprem-postgres-timescale psql -U "${POSTGRES_USER:-prs_user}" -d "${POSTGRES_DB:-prs_production}" -c "
+        SELECT compress_chunk(chunk_name)
+        FROM timescaledb_information.chunks
+        WHERE range_start < NOW() - INTERVAL '7 days'
+        AND NOT is_compressed
+        LIMIT 50;
+        "
+    fi
 
     # Check for unused indexes
     log_message "Checking for unused indexes"
@@ -98,7 +104,7 @@ system_optimization() {
     # Check disk fragmentation (if ext4)
     if mount | grep -q "ext4"; then
         log_message "Checking filesystem fragmentation"
-        e4defrag -c /mnt/ssd > /tmp/ssd-fragmentation.log 2>&1 || true
+        e4defrag -c ${STORAGE_HDD_PATH:-/mnt/hdd} > /tmp/ssd-fragmentation.log 2>&1 || true
         e4defrag -c /mnt/hdd > /tmp/hdd-fragmentation.log 2>&1 || true
     fi
 }

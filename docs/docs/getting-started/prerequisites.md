@@ -15,7 +15,7 @@
 
 ### You Must Setup First:
 - **Server hardware and OS installation**
-- **Storage mount points** (`/mnt/ssd` and `/mnt/hdd`)
+- **Storage mount points** (`/mnt/hdd` and `/mnt/hdd`)
 - **Network configuration** (static IP, DNS)
 - **Domain DNS records** (pointing to server)
 - **Non-root user account** with sudo access
@@ -28,7 +28,7 @@
 |-----------|---------|-------------|---------|
 | **CPU** | 4 cores | 8+ cores | Application processing |
 | **RAM** | 16GB | 32GB | Database and caching |
-| **SSD Storage** | 100GB | 200GB+ | Hot data (database, cache) |
+| **HDD Storage** | 100GB | 200GB+ | Hot data (database, cache) |
 | **HDD Storage** | 500GB | 1TB+ | Backups and archives |
 | **Network** | 1Gbps | 1Gbps+ | Office network connectivity |
 
@@ -48,24 +48,24 @@ The deploy script **checks for these mount points** and will **fail** if they do
 
 ```bash
 # Create mount points
-sudo mkdir -p /mnt/ssd /mnt/hdd
+sudo mkdir -p /mnt/hdd /mnt/hdd
 
 # Example: Mount SSD for hot data
-sudo mount /dev/nvme0n1p1 /mnt/ssd
+sudo mount /dev/nvme0n1p1 /mnt/hdd
 
 # Example: Mount HDD for backups
 sudo mount /dev/sdb1 /mnt/hdd
 
 # Make mounts permanent
-echo "/dev/nvme0n1p1 /mnt/ssd ext4 defaults 0 2" | sudo tee -a /etc/fstab
+echo "/dev/nvme0n1p1 /mnt/hdd ext4 defaults 0 2" | sudo tee -a /etc/fstab
 echo "/dev/sdb1 /mnt/hdd ext4 defaults 0 2" | sudo tee -a /etc/fstab
 
 # Verify mounts
-df -h /mnt/ssd /mnt/hdd
+df -h /mnt/hdd /mnt/hdd
 ```
 
 !!! danger "Deploy Script Requirement"
-    The `check_prerequisites()` function will exit with error if `/mnt/ssd` or `/mnt/hdd` don't exist.
+    The `check_prerequisites()` function will exit with error if `/mnt/hdd` or `/mnt/hdd` don't exist.
 
 ### 2. User Account Setup (REQUIRED)
 
@@ -155,11 +155,11 @@ fi
 # Check storage mounts (CRITICAL - deploy script checks these)
 echo ""
 echo "Storage Mounts:"
-if [ -d "/mnt/ssd" ]; then
-    echo "PASS: /mnt/ssd exists"
-    df -h /mnt/ssd 2>/dev/null || echo "   (not mounted)"
+if [ -d "/mnt/hdd" ]; then
+    echo "PASS: /mnt/hdd exists"
+    df -h /mnt/hdd 2>/dev/null || echo "   (not mounted)"
 else
-    echo "FAIL: /mnt/ssd missing - DEPLOY WILL FAIL"
+    echo "FAIL: /mnt/hdd missing - DEPLOY WILL FAIL"
 fi
 
 if [ -d "/mnt/hdd" ]; then
@@ -186,7 +186,7 @@ ip addr show | grep "inet " | grep -v "127.0.0.1"
 echo ""
 echo "Prerequisites Check Complete!"
 echo ""
-if [ -d "/mnt/ssd" ] && [ -d "/mnt/hdd" ] && [ "$EUID" -ne 0 ] && [ "$TOTAL_RAM" -ge 15 ]; then
+if [ -d "/mnt/hdd" ] && [ -d "/mnt/hdd" ] && [ "$EUID" -ne 0 ] && [ "$TOTAL_RAM" -ge 15 ]; then
     echo "PASS: Ready for Quick Start deployment!"
 else
     echo "FAIL: Fix the issues above before proceeding with deployment."
@@ -261,7 +261,7 @@ chmod +x *.sh
 Once you've completed:
 
 1. **System updates** and GitHub CLI installation
-2. **Storage mount points** setup (`/mnt/ssd` and `/mnt/hdd`)
+2. **Storage mount points** setup (`/mnt/hdd` and `/mnt/hdd`)
 3. **Network configuration** (static IP in 192.168.0.0/20 range)
 4. **Domain DNS** pointing to your server
 5. **Non-root user** with sudo access

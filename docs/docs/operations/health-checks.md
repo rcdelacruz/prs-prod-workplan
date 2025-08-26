@@ -106,7 +106,7 @@ check_infrastructure() {
     fi
     
     # Disk Usage
-    SSD_USAGE=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+    SSD_USAGE=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
     HDD_USAGE=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
     
     if [ "$SSD_USAGE" -gt 90 ]; then
@@ -319,7 +319,7 @@ generate_metrics() {
     # System metrics
     echo "prs_cpu_usage_percent $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//')" >> "$METRICS_FILE"
     echo "prs_memory_usage_percent $(free | grep Mem | awk '{printf "%.1f", $3/$2 * 100.0}')" >> "$METRICS_FILE"
-    echo "prs_ssd_usage_percent $(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')" >> "$METRICS_FILE"
+    echo "prs_ssd_usage_percent $(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')" >> "$METRICS_FILE"
     echo "prs_hdd_usage_percent $(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')" >> "$METRICS_FILE"
     
     # Service metrics
@@ -406,7 +406,7 @@ echo "System Overview:"
 echo "- Uptime: $(uptime -p)"
 echo "- Load: $(uptime | awk -F'load average:' '{print $2}')"
 echo "- Memory: $(free -h | grep Mem | awk '{print $3 "/" $2}')"
-echo "- SSD: $(df -h /mnt/ssd | awk 'NR==2 {print $5}')"
+echo "- SSD: $(df -h /mnt/hdd | awk 'NR==2 {print $5}')"
 echo "- HDD: $(df -h /mnt/hdd | awk 'NR==2 {print $5}')"
 
 # 2. Service status
@@ -464,7 +464,7 @@ System Information:
 Hardware Status:
 - CPU Cores: $(nproc)
 - Total Memory: $(free -h | grep Mem | awk '{print $2}')
-- SSD Capacity: $(df -h /mnt/ssd | awk 'NR==2 {print $2}')
+- SSD Capacity: $(df -h /mnt/hdd | awk 'NR==2 {print $2}')
 - HDD Capacity: $(df -h /mnt/hdd | awk 'NR==2 {print $2}')
 
 Performance Metrics (7-day average):
@@ -587,7 +587,7 @@ check_and_alert() {
     fi
     
     # Storage checks
-    SSD_USAGE=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+    SSD_USAGE=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
     if [ "$SSD_USAGE" -gt "$SSD_THRESHOLD" ]; then
         send_alert "CRITICAL" "SSD storage critical: ${SSD_USAGE}% (threshold: ${SSD_THRESHOLD}%)"
     fi

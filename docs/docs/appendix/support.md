@@ -303,8 +303,8 @@ docker-compose -f 02-docker-configuration/docker-compose.onprem.yml up -d
 ./scripts/restore-database.sh /mnt/hdd/postgres-backups/daily/latest-backup.sql
 
 # Emergency storage cleanup
-sudo find /mnt/ssd -name "*.tmp" -delete
-sudo find /mnt/ssd/logs -name "*.log" -mtime +1 -exec gzip {} \;
+sudo find /mnt/hdd -name "*.tmp" -delete
+sudo find /mnt/hdd/logs -name "*.log" -mtime +1 -exec gzip {} \;
 ```
 
 #### Data Recovery
@@ -314,7 +314,7 @@ sudo find /mnt/ssd/logs -name "*.log" -mtime +1 -exec gzip {} \;
 ./scripts/restore-database.sh --point-in-time "2024-08-22 14:30:00"
 
 # File recovery from backup
-rsync -av /mnt/hdd/file-backups/latest/ /mnt/ssd/uploads/
+rsync -av /mnt/hdd/file-backups/latest/ /mnt/hdd/uploads/
 
 # Configuration recovery
 cp /mnt/hdd/config-backups/latest/docker-configuration/ 02-docker-configuration/

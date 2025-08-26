@@ -34,11 +34,11 @@
 
 ## Architecture Questions
 
-### How does the dual storage system work?
+### How does the HDD-only storage system work?
 
 **A:** The system automatically manages data across two storage tiers:
 
-- **SSD Storage (470GB)**: Hot data (0-30 days), fast access (<50ms)
+- **HDD Storage (470GB)**: Hot data (0-30 days), fast access (<50ms)
 - **HDD Storage (2.4TB)**: Cold data (30+ days), slower access (<2s)
 
 TimescaleDB automatically moves data between tiers based on age and access patterns. Your application never needs to know which tier contains the data.
@@ -58,7 +58,7 @@ TimescaleDB automatically moves data between tiers based on age and access patte
 
 - **Application Scaling**: Multiple backend instances with load balancing
 - **Database Scaling**: Read replicas for reporting workloads
-- **Storage Scaling**: Additional SSD/HDD tiers
+- **Storage Scaling**: Additional HDD-only tiers
 - **Network Scaling**: Link aggregation and 10Gbps upgrades
 
 ## Technical Questions
@@ -225,7 +225,7 @@ TimescaleDB automatically moves data between tiers based on age and access patte
 - **Query Optimization**: Analyze and optimize slow database queries
 - **Index Management**: Ensure proper database indexing
 - **Cache Tuning**: Optimize Redis cache configuration
-- **Storage Management**: Balance data across SSD/HDD tiers
+- **Storage Management**: Balance data across HDD-only tiers
 
 ## Troubleshooting Questions
 

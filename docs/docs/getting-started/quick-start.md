@@ -46,7 +46,7 @@ This guide will get you from zero to a fully operational PRS system in **2-3 hou
 - **System updated** (`sudo apt update && sudo apt upgrade -y`)
 - **GitHub CLI installed** and authenticated (`gh auth login`)
 - **16GB+ RAM** (checked by script)
-- **Storage mounts** `/mnt/ssd` and `/mnt/hdd` (required)
+- **Storage mounts** `/mnt/hdd` and `/mnt/hdd` (required)
 - **Non-root user** with sudo access (script fails if root)
 - **Domain name** configured (e.g., prs.citylandcondo.com)
 - **Network connectivity** and static IP in 192.168.0.0/20 range
@@ -133,13 +133,22 @@ sudo ./deploy-onprem.sh deploy
 
 This **idempotent** command will:
 - **Install all dependencies** (Docker, packages, etc.)
-- **Configure storage** (SSD/HDD setup with proper permissions)
+- **Configure storage** (HDD-only setup with proper permissions)
 - **Set up SSL certificates** (self-signed initially)
 - **Configure firewall** for office network access (192.168.0.0/20)
 - **Clone and build** application repositories
 - **Deploy all services** (PostgreSQL+TimescaleDB, Redis, Nginx, etc.)
-- **Initialize database** and create admin user
+- **Initialize database** with TimescaleDB tiered storage and create admin user
+- **Configure automated data movement** (SSD → HDD based on age)
 - **Start monitoring** services (Grafana, Prometheus, Node Exporter)
+
+!!! success "Automated TimescaleDB Tiered Storage"
+    **The deployment now automatically configures:**
+    - **SSD tablespace** (`/mnt/hdd/postgresql-hot`) for new data
+    - **HDD tablespace** (`/mnt/hdd/postgresql-cold`) for old data
+    - **48 hypertables** with intelligent compression
+    - **Data movement policies** - automatically moves data SSD → HDD after 14-60 days
+    - **Zero deletion policy** - all data preserved permanently
 
 !!! info "Idempotent Design"
     The script can be run multiple times safely. It will skip completed steps and only perform necessary changes.
@@ -237,12 +246,12 @@ If you **do not have a static public IP**, you must use self-signed certificates
 
 ---
 
-## Step 4: Production Optimization (CRITICAL)
+## Step 5: Production Optimization (CRITICAL)
 
 !!! danger "Production Optimization Required"
     **This step is MANDATORY for production deployment.** Skipping optimization will result in poor performance, security vulnerabilities, and system instability under load.
 
-### 4.1 Server-Level Optimization
+### 5.1 Server-Level Optimization
 
 **Apply system-level optimizations for 100+ concurrent users:**
 
@@ -273,7 +282,7 @@ sysctl net.core.somaxconn net.ipv4.tcp_max_syn_backlog vm.swappiness
 !!! note "Manual Optimization"
     Currently requires manual configuration. A dedicated `optimize-server-performance.sh` script can be created for automation.
 
-### 4.2 Docker and Container Optimization
+### 5.2 Docker and Container Optimization
 
 **Optimize Docker daemon and container configuration:**
 
@@ -314,42 +323,44 @@ docker info | grep -E "Storage Driver|Logging Driver"
 !!! note "Manual Optimization"
     Currently requires manual configuration. The deploy script handles basic Docker setup.
 
-### 4.3 Database Optimization
+### 5.3 Database Optimization (AUTOMATED)
 
 **Optimize PostgreSQL and TimescaleDB for production:**
 
 ```bash
-# Apply TimescaleDB post-setup optimization (existing script)
+# Apply comprehensive TimescaleDB optimization (automated script)
 ./timescaledb-post-setup-optimization.sh
 
-# Manual PostgreSQL optimization (no dedicated script yet)
-# Connect to database and apply settings
-docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -c "
--- Memory optimization for 16GB system
-ALTER SYSTEM SET shared_buffers = '2GB';
-ALTER SYSTEM SET effective_cache_size = '6GB';
-ALTER SYSTEM SET work_mem = '32MB';
-ALTER SYSTEM SET maintenance_work_mem = '512MB';
-
--- Connection optimization
-ALTER SYSTEM SET max_connections = 200;
-
--- Reload configuration
-SELECT pg_reload_conf();
-"
+# Run automatic TimescaleDB optimizer (Day 1 safe)
+./timescaledb-auto-optimizer.sh
 ```
 
-**What this optimizes** (see [Database Performance](../database/performance.md)):
-- **TimescaleDB compression policies** for 38 hypertables (automated script)
-- **PostgreSQL memory settings** (6GB allocation)
-- **Connection limits** optimization
+**What this optimizes automatically:**
+- **TimescaleDB compression policies** for all hypertables (48 tables)
+- **PostgreSQL memory settings** optimized for 16GB RAM
+- **Connection limits** and performance tuning
+- **Chunk compression** - compresses all uncompressed chunks
 - **Retention policies** for data lifecycle management
 - **Monitoring views** for performance tracking
+- **Background job optimization** for compression and retention
 
-!!! success "Automated Script Available"
-    The `timescaledb-post-setup-optimization.sh` script handles most database optimization automatically.
+!!! success "Fully Automated Optimization"
+    Both scripts are **safe to run from Day 1** even with no data. They automatically:
+    - Set up compression policies for future data
+    - Compress existing data immediately
+    - Optimize PostgreSQL settings for production
+    - Create monitoring views for ongoing health checks
 
-### 4.4 Application and API Optimization
+!!! info "Zero Deletion Policy Compliant"
+    The optimizer **never removes tables** - it only optimizes existing hypertables for better performance and compression.
+
+**Schedule weekly optimization:**
+```bash
+# Add to crontab for weekly automatic optimization
+echo "0 2 * * 0 /opt/prs/prs-deployment/scripts/timescaledb-auto-optimizer.sh" | crontab -
+```
+
+### 5.4 Application and API Optimization
 
 **Optimize application performance and security:**
 
@@ -378,7 +389,7 @@ echo "MAX_FILE_SIZE=50MB" >> /opt/prs/prs-deployment/02-docker-configuration/.en
 !!! note "Environment-Based Configuration"
     Application optimization is primarily done through environment variables in the `.env` file rather than dedicated scripts.
 
-### 4.5 Security Hardening
+### 5.5 Security Hardening
 
 **Apply comprehensive security hardening:**
 
@@ -405,7 +416,7 @@ echo "MAX_FILE_SIZE=50MB" >> /opt/prs/prs-deployment/02-docker-configuration/.en
 !!! success "Automated Security"
     The `security-hardening-check.sh` script provides security verification and recommendations. Most security hardening is handled by the deploy script.
 
-### 4.6 Monitoring and Alerting Setup
+### 5.6 Monitoring and Alerting Setup
 
 **Configure comprehensive monitoring:**
 
@@ -430,7 +441,7 @@ echo "MAX_FILE_SIZE=50MB" >> /opt/prs/prs-deployment/02-docker-configuration/.en
 !!! success "Automated Monitoring"
     The `setup-monitoring-automation.sh` script handles most monitoring configuration automatically.
 
-### 4.7 Backup and Recovery Setup
+### 5.7 Backup and Recovery Setup
 
 **Configure enterprise backup system:**
 
@@ -458,7 +469,7 @@ echo "MAX_FILE_SIZE=50MB" >> /opt/prs/prs-deployment/02-docker-configuration/.en
 !!! success "Automated Backup System"
     The backup system is fully automated with existing scripts for setup, verification, and testing.
 
-### 4.8 Performance Testing and Validation
+### 5.8 Performance Testing and Validation
 
 **Validate production readiness:**
 
@@ -499,7 +510,47 @@ echo "MAX_FILE_SIZE=50MB" >> /opt/prs/prs-deployment/02-docker-configuration/.en
 
 ---
 
-## Step 3: Basic Automation Setup (15-30 minutes)
+## Step 6: TimescaleDB Optimization (5-10 minutes)
+
+!!! success "Day 1 Safe - Run Immediately"
+    **This optimization is safe to run from Day 1** even with no data. It prepares your database for optimal performance and can be run multiple times safely.
+
+### Immediate Database Optimization
+
+After deployment completes, immediately optimize your TimescaleDB setup:
+
+```bash
+# Navigate to scripts directory
+cd /opt/prs/prs-deployment/scripts
+
+# Run comprehensive TimescaleDB optimization
+./timescaledb-auto-optimizer.sh
+```
+
+**What this does automatically:**
+- ✅ **Compresses all uncompressed chunks** (immediate performance boost)
+- ✅ **Sets up compression policies** for all 48 hypertables
+- ✅ **Optimizes PostgreSQL settings** for 16GB RAM
+- ✅ **Creates monitoring views** for health tracking
+- ✅ **Configures background jobs** for automatic maintenance
+- ✅ **Generates optimization report** showing results
+
+### Schedule Weekly Optimization
+
+```bash
+# Add weekly TimescaleDB optimization to crontab
+(crontab -l 2>/dev/null; echo "0 2 * * 0 /opt/prs/prs-deployment/scripts/timescaledb-auto-optimizer.sh >> /var/log/timescaledb-optimizer.log 2>&1") | crontab -
+```
+
+!!! info "Zero Deletion Policy"
+    The optimizer **respects your zero deletion policy** - it only optimizes existing tables, never removes them. Perfect for production environments.
+
+!!! tip "Monitor Results"
+    Check optimization results: `tail -f /var/log/timescaledb-optimizer.log`
+
+---
+
+## Step 7: Basic Automation Setup (15-30 minutes)
 
 ### Set Up Basic Backup Automation
 
@@ -609,14 +660,23 @@ tail -f /var/log/prs-monitoring.log
 
 ### Maintenance Schedule
 
-| Task | Frequency | Automated |
-|------|-----------|-----------|
-| Database Backup | Daily 2:00 AM | ✅ |
-| Application Backup | Daily 3:00 AM | ✅ |
-| Backup Verification | Daily 4:00 AM | ✅ |
-| System Monitoring | Every 5-15 min | ✅ |
-| Weekly Maintenance | Sunday 1:00 AM | ✅ |
-| Security Updates | Weekly | ✅ |
+| Task | Frequency | Automated | Script |
+|------|-----------|-----------|---------|
+| Database Backup | Daily 2:00 AM | ✅ | `backup-full.sh` |
+| Application Backup | Daily 3:00 AM | ✅ | `backup-application-data.sh` |
+| Backup Verification | Daily 4:00 AM | ✅ | `verify-backups.sh` |
+| **TimescaleDB Optimization** | **Weekly Sunday 2:00 AM** | ✅ | `timescaledb-auto-optimizer.sh` |
+| System Monitoring | Every 5-15 min | ✅ | `system-performance-monitor.sh` |
+| Weekly Maintenance | Sunday 1:00 AM | ✅ | `weekly-maintenance-automation.sh` |
+| Security Updates | Weekly | ✅ | `unattended-upgrades` |
+
+!!! info "TimescaleDB Auto-Optimization"
+    **NEW**: Weekly TimescaleDB optimization automatically:
+    - Compresses uncompressed chunks (improves performance)
+    - Analyzes compression effectiveness
+    - Optimizes chunk intervals
+    - Monitors background job health
+    - Generates optimization reports
 
 ---
 

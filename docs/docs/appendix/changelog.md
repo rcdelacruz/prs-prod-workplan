@@ -9,7 +9,7 @@ This changelog documents all notable changes to the PRS on-premises deployment, 
 ### 🚀 New Features
 
 **Dual Storage Architecture**
-- Implemented automatic SSD/HDD tiering for optimal performance and capacity
+- Implemented automatic HDD-only tiering for optimal performance and capacity
 - Added TimescaleDB data movement policies for 30-day hot/cold storage
 - Configured automatic compression for data older than 7 days
 - Achieved 60-80% storage compression ratios

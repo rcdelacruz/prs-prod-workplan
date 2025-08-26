@@ -526,8 +526,8 @@ main() {
 
     # Backup uploads directory
     log_message "Backing up uploads directory"
-    if [ -d "/mnt/ssd/uploads" ]; then
-        tar -czf "$APP_BACKUP_DIR/uploads.tar.gz" -C /mnt/ssd uploads/
+    if [ -d "/mnt/hdd/uploads" ]; then
+        tar -czf "$APP_BACKUP_DIR/uploads.tar.gz" -C /mnt/hdd uploads/
         log_message "Uploads backup completed"
     fi
 
@@ -545,7 +545,7 @@ main() {
 
     # Backup logs (recent only)
     log_message "Backing up recent logs"
-    find /mnt/ssd/logs -name "*.log" -mtime -7 | \
+    find /mnt/hdd/logs -name "*.log" -mtime -7 | \
     tar -czf "$APP_BACKUP_DIR/recent-logs.tar.gz" --files-from=-
 
     # Generate manifest
@@ -758,11 +758,11 @@ main() {
 
     # Backup current data directory
     log_message "Backing up current data directory"
-    mv /mnt/ssd/postgresql-hot /mnt/ssd/postgresql-hot.backup.$(date +%Y%m%d_%H%M%S)
+    mv /mnt/hdd/postgresql-hot /mnt/hdd/postgresql-hot.backup.$(date +%Y%m%d_%H%M%S)
 
     # Create new data directory
-    mkdir -p /mnt/ssd/postgresql-hot
-    chown 999:999 /mnt/ssd/postgresql-hot
+    mkdir -p /mnt/hdd/postgresql-hot
+    chown 999:999 /mnt/hdd/postgresql-hot
 
     # Restore base backup
     log_message "Restoring base backup"
@@ -775,7 +775,7 @@ recovery_target_time = '$RECOVERY_TIME'
 recovery_target_action = 'promote'
 EOF
 
-    cp /tmp/recovery.conf /mnt/ssd/postgresql-hot/
+    cp /tmp/recovery.conf /mnt/hdd/postgresql-hot/
 
     # Start database in recovery mode
     log_message "Starting database in recovery mode"

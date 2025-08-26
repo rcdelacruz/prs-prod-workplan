@@ -9,7 +9,7 @@ This guide covers the complete deployment process for the PRS on-premises produc
 ### Validation
 
 - [ ] **RAM**: 16GB available and recognized
-- [ ] **SSD**: 470GB RAID1 mounted at `/mnt/ssd`
+- [ ] **SSD**: 470GB RAID1 mounted at `/mnt/hdd`
 - [ ] **HDD**: 2.4TB RAID5 mounted at `/mnt/hdd`
 - [ ] **Network**: 1 Gbps interface configured
 - [ ] **UPS**: Backup power system operational
@@ -45,13 +45,13 @@ cd scripts
 sudo ./setup-storage.sh
 
 # Verify storage structure
-ls -la /mnt/ssd/
+ls -la /mnt/hdd/
 ls -la /mnt/hdd/
 ```
 
 Expected output:
 ```
-/mnt/ssd/:
+/mnt/hdd/:
 ├── postgresql-hot/
 ├── redis-data/
 ├── uploads/
@@ -164,9 +164,9 @@ docker-compose -f 02-docker-configuration/docker-compose.onprem.yml ps
 # Connect to database
 docker exec -it prs-onprem-postgres-timescale psql -U prs_admin -d prs_production
 
-# Create tablespaces for dual storage
-CREATE TABLESPACE ssd_hot LOCATION '/mnt/ssd/postgresql-hot';
-CREATE TABLESPACE hdd_cold LOCATION '/mnt/hdd/postgresql-cold';
+# Create tablespaces for HDD-only storage
+-- Tablespace creation not needed (HDD-only)
+-- Tablespace creation not needed (HDD-only)
 
 # Enable TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb;
@@ -411,7 +411,7 @@ docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c
 
 - [ ] Response time <200ms for 95% of requests
 - [ ] Support for 100+ concurrent users
-- [ ] Database queries optimized for dual storage
+- [ ] Database queries optimized for HDD-only storage
 - [ ] Storage tiers functioning correctly
 
 ### Validation

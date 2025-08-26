@@ -21,8 +21,8 @@ graph TB
     end
 
     subgraph "Storage Tiers"
-        HOT --> SSD[SSD Storage<br/>ssd_hot tablespace<br/>/mnt/ssd/postgresql-hot]
-        COLD --> HDD[HDD Storage<br/>hdd_cold tablespace<br/>/mnt/hdd/postgresql-cold]
+        HOT --> SSD[HDD Storage<br/>pg_default tablespace<br/>/mnt/hdd/postgresql-hot]
+        COLD --> HDD[HDD Storage<br/>pg_default tablespace<br/>/mnt/hdd/postgresql-cold]
     end
 
     subgraph "Data Lifecycle"
@@ -84,8 +84,8 @@ checkpoint_completion_target = 0.9     -- Smooth checkpoints
 wal_buffers = 32MB                     -- WAL buffer size
 
 -- Tablespace Configuration
-temp_tablespaces = ssd_hot
-default_tablespace = ssd_hot
+temp_tablespaces = pg_default
+default_tablespace = pg_default
 ```
 
 ### Extension Setup
@@ -105,13 +105,22 @@ SELECT pg_reload_conf();
 
 ### Storage Tablespaces
 
+Change directory ownership first
+```
+docker exec prs-onprem-postgres-timescale chown -R postgres:postgres /mnt/hdd/postgresql-hot /mnt/hdd/postgresql-cold
+```
+
 ```sql
 -- Create tablespaces for tiered storage
-CREATE TABLESPACE ssd_hot LOCATION '/mnt/ssd/postgresql-hot';
-CREATE TABLESPACE hdd_cold LOCATION '/mnt/hdd/postgresql-cold';
+-- Tablespace creation not needed (HDD-only)
+-- Tablespace creation not needed (HDD-only)
 
 -- Set default tablespace for new chunks
-ALTER DATABASE prs SET default_tablespace = ssd_hot;
+ALTER DATABASE prs SET default_tablespace = pg_default;
+ALTER SYSTEM SET default_tablespace = 'pg_default';
+
+-- Reload configuration
+SELECT pg_reload_conf();
 ```
 
 ### Usage Monitoring
@@ -122,8 +131,8 @@ SELECT
     spcname as tablespace_name,
     pg_size_pretty(pg_tablespace_size(spcname)) as size,
     CASE
-        WHEN spcname = 'ssd_hot' THEN 'SSD Storage'
-        WHEN spcname = 'hdd_cold' THEN 'HDD Storage'
+        WHEN spcname = 'pg_default' THEN 'HDD Storage'
+        WHEN spcname = 'pg_default' THEN 'HDD Storage'
         ELSE 'Default'
     END as storage_type
 FROM pg_tablespace;
@@ -172,14 +181,14 @@ FROM timescaledb_information.compressed_hypertable_stats;
 
 ```sql
 -- Move chunks older than 30 days to HDD storage
-SELECT add_move_chunk_policy('notifications', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('audit_logs', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('requisitions', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('purchase_orders', INTERVAL '30 days', 'hdd_cold');
+SELECT add_move_chunk_policy('notifications', INTERVAL '30 days', 'pg_default');
+SELECT add_move_chunk_policy('audit_logs', INTERVAL '30 days', 'pg_default');
+SELECT add_move_chunk_policy('requisitions', INTERVAL '30 days', 'pg_default');
+SELECT add_move_chunk_policy('purchase_orders', INTERVAL '30 days', 'pg_default');
 
 -- Move history tables after 14 days (faster archival)
-SELECT add_move_chunk_policy('requisition_canvass_histories', INTERVAL '14 days', 'hdd_cold');
-SELECT add_move_chunk_policy('requisition_item_histories', INTERVAL '14 days', 'hdd_cold');
+SELECT add_move_chunk_policy('requisition_canvass_histories', INTERVAL '14 days', 'pg_default');
+SELECT add_move_chunk_policy('requisition_item_histories', INTERVAL '14 days', 'pg_default');
 ```
 
 ### Data Movement
@@ -188,15 +197,15 @@ SELECT add_move_chunk_policy('requisition_item_histories', INTERVAL '14 days', '
 -- Move specific chunk to different tablespace
 SELECT move_chunk(
     chunk => '_timescaledb_internal._hyper_1_1_chunk',
-    destination_tablespace => 'hdd_cold'
+    destination_tablespace => 'pg_default'
 );
 
 -- Move all old chunks for a table
-SELECT move_chunk(chunk_name, 'hdd_cold')
+SELECT move_chunk(chunk_name, 'pg_default')
 FROM timescaledb_information.chunks
 WHERE hypertable_name = 'notifications'
 AND range_start < NOW() - INTERVAL '30 days'
-AND tablespace_name = 'ssd_hot';
+AND tablespace_name = 'pg_default';
 ```
 
 ## Performance Optimization
@@ -265,8 +274,8 @@ SELECT
     is_compressed,
     tablespace_name,
     CASE
-        WHEN tablespace_name = 'ssd_hot' THEN 'SSD'
-        WHEN tablespace_name = 'hdd_cold' THEN 'HDD'
+        WHEN tablespace_name = 'pg_default' THEN 'SSD'
+        WHEN tablespace_name = 'pg_default' THEN 'HDD'
         ELSE 'Default'
     END as storage_tier
 FROM timescaledb_information.chunks
@@ -372,17 +381,17 @@ SELECT compress_chunk(chunk_name)
 FROM timescaledb_information.chunks
 WHERE range_start < NOW() - INTERVAL '3 days'
 AND NOT is_compressed
-AND tablespace_name = 'ssd_hot';
+AND tablespace_name = 'pg_default';
 ```
 
 #### Data Movement (SSD Critical)
 
 ```sql
 -- Move older chunks to HDD immediately
-SELECT move_chunk(chunk_name, 'hdd_cold')
+SELECT move_chunk(chunk_name, 'pg_default')
 FROM timescaledb_information.chunks
 WHERE range_start < NOW() - INTERVAL '14 days'
-AND tablespace_name = 'ssd_hot';
+AND tablespace_name = 'pg_default';
 ```
 
 ---
@@ -395,3 +404,27 @@ AND tablespace_name = 'ssd_hot';
     - **Historical Data (HDD)**: <2s query time
     - **Compressed Data**: 60-80% space savings
     - **Zero Data Loss**: Complete compliance with zero-deletion policy
+
+## Production Operations
+
+For production maintenance and automation:
+
+- **[TimescaleDB Automation Guide](../maintenance/timescaledb-automation.md)** - Complete automation strategy and setup
+- **[TimescaleDB Quick Reference](../maintenance/timescaledb-quick-reference.md)** - Daily operations and troubleshooting
+- **[Routine Maintenance](../maintenance/routine.md)** - Integration with overall maintenance procedures
+
+### Key Production Commands
+
+```bash
+# One-time setup
+./deploy-onprem.sh optimize-timescaledb
+
+# Weekly automation (cron)
+0 2 * * 0 /opt/prs/prs-deployment/scripts/deploy-onprem.sh weekly-maintenance
+
+# Status monitoring
+./deploy-onprem.sh timescaledb-status
+```
+
+!!! success "Fully Automated"
+    TimescaleDB requires minimal manual intervention in production. The automation handles compression, storage tiering, and data lifecycle management automatically.

@@ -36,7 +36,7 @@ Load Average: $(uptime | awk -F'load average:' '{print $2}')
 
 STORAGE USAGE
 -------------
-SSD (/mnt/ssd): $(df -h /mnt/ssd | awk 'NR==2 {print $5 " used (" $3 "/" $2 ")"}')
+SSD (${STORAGE_HDD_PATH:-/mnt/hdd}): $(df -h ${STORAGE_HDD_PATH:-/mnt/hdd} | awk 'NR==2 {print $5 " used (" $3 "/" $2 ")"}')
 HDD (/mnt/hdd): $(df -h /mnt/hdd | awk 'NR==2 {print $5 " used (" $3 "/" $2 ")"}')
 Root (/): $(df -h / | awk 'NR==2 {print $5 " used (" $3 "/" $2 ")"}')
 
@@ -187,11 +187,11 @@ STORAGE TRENDS
 EOF
 
     # Storage usage trends
-    echo "SSD Usage Trend: $(df /mnt/ssd | awk 'NR==2 {print $5}')"
+    echo "HDD Usage Trend: $(df ${STORAGE_HDD_PATH:-/mnt/hdd} | awk 'NR==2 {print $5}')"
     echo "HDD Usage Trend: $(df /mnt/hdd | awk 'NR==2 {print $5}')"
 
     # Check for large files
-    local large_files=$(find /mnt/ssd -type f -size +100M 2>/dev/null | wc -l)
+    local large_files=$(find ${STORAGE_HDD_PATH:-/mnt/hdd} -type f -size +100M 2>/dev/null | wc -l)
     echo "Large Files (>100MB): $large_files"
 
     echo ""
@@ -220,7 +220,7 @@ EOF
         # Generate recommendations based on current status
         local cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' | cut -d. -f1)
         local memory_usage=$(free | grep Mem | awk '{printf "%.0f", $3/$2 * 100.0}')
-        local ssd_usage=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+        local ssd_usage=$(df ${STORAGE_HDD_PATH:-/mnt/hdd} | awk 'NR==2 {print $5}' | sed 's/%//')
 
         if [ "$cpu_usage" -gt 80 ]; then
             echo "- High CPU usage detected ($cpu_usage%) - consider optimizing or scaling"

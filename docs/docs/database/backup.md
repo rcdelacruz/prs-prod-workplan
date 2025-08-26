@@ -490,15 +490,15 @@ docker-compose -f /opt/prs-deployment/02-docker-configuration/docker-compose.onp
 
 # Backup current data directory
 echo "Backing up current data directory..."
-sudo mv /mnt/ssd/postgresql-hot /mnt/ssd/postgresql-hot.backup.$(date +%Y%m%d_%H%M%S)
+sudo mv /mnt/hdd/postgresql-hot /mnt/hdd/postgresql-hot.backup.$(date +%Y%m%d_%H%M%S)
 
 # Create new data directory
-sudo mkdir -p /mnt/ssd/postgresql-hot
-sudo chown 999:999 /mnt/ssd/postgresql-hot
+sudo mkdir -p /mnt/hdd/postgresql-hot
+sudo chown 999:999 /mnt/hdd/postgresql-hot
 
 # Initialize new database cluster
 docker run --rm \
-    -v /mnt/ssd/postgresql-hot:/var/lib/postgresql/data \
+    -v /mnt/hdd/postgresql-hot:/var/lib/postgresql/data \
     -e POSTGRES_DB=prs_production \
     -e POSTGRES_USER=prs_admin \
     -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
@@ -538,7 +538,7 @@ recovery_target_time = '$RECOVERY_TIME'
 recovery_target_action = 'promote'
 EOF
 
-sudo cp /tmp/recovery.conf /mnt/ssd/postgresql-hot/
+sudo cp /tmp/recovery.conf /mnt/hdd/postgresql-hot/
 
 # Start database in recovery mode
 echo "Starting database in recovery mode..."

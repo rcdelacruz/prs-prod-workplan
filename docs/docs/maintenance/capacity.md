@@ -79,7 +79,7 @@ EOF
     echo "Hardware Configuration:" >> "$REPORT_FILE"
     echo "- CPU Cores: $(nproc)" >> "$REPORT_FILE"
     echo "- Total Memory: $(free -h | grep Mem | awk '{print $2}')" >> "$REPORT_FILE"
-    echo "- SSD Storage: $(df -h /mnt/ssd | awk 'NR==2 {print $2}')" >> "$REPORT_FILE"
+    echo "- HDD Storage: $(df -h /mnt/hdd | awk 'NR==2 {print $2}')" >> "$REPORT_FILE"
     echo "- HDD Storage: $(df -h /mnt/hdd | awk 'NR==2 {print $2}')" >> "$REPORT_FILE"
 
     # Current utilization
@@ -88,7 +88,7 @@ EOF
     echo "----------------------------" >> "$REPORT_FILE"
     echo "- CPU Usage: $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//')%" >> "$REPORT_FILE"
     echo "- Memory Usage: $(free | grep Mem | awk '{printf "%.1f", $3/$2 * 100.0}')%" >> "$REPORT_FILE"
-    echo "- SSD Usage: $(df /mnt/ssd | awk 'NR==2 {print $5}')" >> "$REPORT_FILE"
+    echo "- HDD Usage: $(df /mnt/hdd | awk 'NR==2 {print $5}')" >> "$REPORT_FILE"
     echo "- HDD Usage: $(df /mnt/hdd | awk 'NR==2 {print $5}')" >> "$REPORT_FILE"
 
     # Application metrics
@@ -215,15 +215,15 @@ generate_recommendations() {
     fi
 
     # Storage recommendations
-    SSD_USAGE=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+    SSD_USAGE=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
     HDD_USAGE=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
 
     if [ "$SSD_USAGE" -gt 85 ]; then
-        echo "- SSD Storage: Expansion needed (current usage: ${SSD_USAGE}%)"
+        echo "- HDD Storage: Expansion needed (current usage: ${SSD_USAGE}%)"
     elif [ "$SSD_USAGE" -gt 70 ]; then
-        echo "- SSD Storage: Plan expansion within 3 months (current usage: ${SSD_USAGE}%)"
+        echo "- HDD Storage: Plan expansion within 3 months (current usage: ${SSD_USAGE}%)"
     else
-        echo "- SSD Storage: Current capacity sufficient (usage: ${SSD_USAGE}%)"
+        echo "- HDD Storage: Current capacity sufficient (usage: ${SSD_USAGE}%)"
     fi
 
     if [ "$HDD_USAGE" -gt 80 ]; then
@@ -395,9 +395,9 @@ check_memory_scaling_needs() {
 ```bash
 # Storage scaling decision matrix
 check_storage_scaling_needs() {
-    SSD_USAGE=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+    SSD_USAGE=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
     HDD_USAGE=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
-    SSD_SIZE_GB=$(df -BG /mnt/ssd | awk 'NR==2 {print $2}' | sed 's/G//')
+    SSD_SIZE_GB=$(df -BG /mnt/hdd | awk 'NR==2 {print $2}' | sed 's/G//')
     HDD_SIZE_TB=$(df -BT /mnt/hdd | awk 'NR==2 {print $2}' | sed 's/T//')
 
     echo "Storage Scaling Assessment:"
@@ -481,7 +481,7 @@ CURRENT CONFIGURATION
 --------------------
 - CPU: $(nproc) cores
 - Memory: $(free -h | grep Mem | awk '{print $2}')
-- SSD: $(df -h /mnt/ssd | awk 'NR==2 {print $2}')
+- SSD: $(df -h /mnt/hdd | awk 'NR==2 {print $2}')
 - HDD: $(df -h /mnt/hdd | awk 'NR==2 {print $2}')
 
 UPGRADE TIMELINE
@@ -532,8 +532,8 @@ display_capacity_dashboard() {
     printf "Memory Usage: %3s%% " "$(free | grep Mem | awk '{printf "%.0f", $3/$2 * 100.0}')"
     [ "$(free | grep Mem | awk '{printf "%.0f", $3/$2 * 100.0}')" -gt 80 ] && echo "[WARNING]" || echo "[OK]"
 
-    printf "SSD Usage:    %3s%% " "$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')"
-    [ "$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')" -gt 85 ] && echo "[WARNING]" || echo "[OK]"
+    printf "HDD Usage:    %3s%% " "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')"
+    [ "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')" -gt 85 ] && echo "[WARNING]" || echo "[OK]"
 
     printf "HDD Usage:    %3s%% " "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')"
     [ "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')" -gt 80 ] && echo "[WARNING]" || echo "[OK]"

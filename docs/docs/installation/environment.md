@@ -285,32 +285,32 @@ sudo ./setup-storage.sh
 
 ```bash
 # Create SSD storage directories
-sudo mkdir -p /mnt/ssd/{postgresql-hot,redis-data,uploads,logs,nginx-cache,prometheus-data,grafana-data,portainer-data}
+sudo mkdir -p /mnt/hdd/{postgresql-hot,redis-data,uploads,logs,nginx-cache,prometheus-data,grafana-data,portainer-data}
 
 # Create HDD storage directories
 sudo mkdir -p /mnt/hdd/{postgresql-cold,postgres-backups,app-logs-archive,redis-backups,prometheus-archive}
 
 # Set ownership for PostgreSQL
-sudo chown -R 999:999 /mnt/ssd/postgresql-hot /mnt/hdd/postgresql-cold /mnt/hdd/postgres-backups
+sudo chown -R 999:999 /mnt/hdd/postgresql-hot /mnt/hdd/postgresql-cold /mnt/hdd/postgres-backups
 
 # Set ownership for Redis
-sudo chown -R 999:999 /mnt/ssd/redis-data /mnt/hdd/redis-backups
+sudo chown -R 999:999 /mnt/hdd/redis-data /mnt/hdd/redis-backups
 
 # Set ownership for Grafana
-sudo chown -R 472:472 /mnt/ssd/grafana-data
+sudo chown -R 472:472 /mnt/hdd/grafana-data
 
 # Set ownership for Prometheus
-sudo chown -R 65534:65534 /mnt/ssd/prometheus-data /mnt/hdd/prometheus-archive
+sudo chown -R 65534:65534 /mnt/hdd/prometheus-data /mnt/hdd/prometheus-archive
 
 # Set ownership for Nginx
-sudo chown -R www-data:www-data /mnt/ssd/nginx-cache /mnt/ssd/uploads
+sudo chown -R www-data:www-data /mnt/hdd/nginx-cache /mnt/hdd/uploads
 
 # Set ownership for application logs
-sudo chown -R 1000:1000 /mnt/ssd/logs /mnt/hdd/app-logs-archive
+sudo chown -R 1000:1000 /mnt/hdd/logs /mnt/hdd/app-logs-archive
 
 # Set permissions
-sudo chmod 700 /mnt/ssd/postgresql-hot /mnt/hdd/postgresql-cold
-sudo chmod 755 /mnt/ssd/redis-data /mnt/ssd/uploads /mnt/ssd/logs
+sudo chmod 700 /mnt/hdd/postgresql-hot /mnt/hdd/postgresql-cold
+sudo chmod 755 /mnt/hdd/redis-data /mnt/hdd/uploads /mnt/hdd/logs
 sudo chmod 755 /mnt/hdd/postgres-backups /mnt/hdd/app-logs-archive
 ```
 
@@ -318,14 +318,14 @@ sudo chmod 755 /mnt/hdd/postgres-backups /mnt/hdd/app-logs-archive
 
 ```bash
 # Check storage structure
-tree /mnt/ssd /mnt/hdd
+tree /mnt/hdd /mnt/hdd
 
 # Check permissions
-ls -la /mnt/ssd/
+ls -la /mnt/hdd/
 ls -la /mnt/hdd/
 
 # Check disk space
-df -h /mnt/ssd /mnt/hdd
+df -h /mnt/hdd /mnt/hdd
 ```
 
 ## Security Setup
@@ -489,11 +489,11 @@ docker run hello-world
 mount | grep -E "(ssd|hdd)"
 
 # Check storage permissions
-ls -la /mnt/ssd/
+ls -la /mnt/hdd/
 ls -la /mnt/hdd/
 
 # Test storage performance
-sudo fio --name=test --filename=/mnt/ssd/test --size=1G --rw=randwrite --bs=4k --numjobs=1 --time_based --runtime=30
+sudo fio --name=test --filename=/mnt/hdd/test --size=1G --rw=randwrite --bs=4k --numjobs=1 --time_based --runtime=30
 ```
 
 ### Validation

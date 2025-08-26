@@ -133,8 +133,8 @@ test_system_performance() {
     log_message "Testing disk I/O performance"
 
     # Test SSD performance
-    local ssd_write_speed=$(dd if=/dev/zero of=/mnt/ssd/test_write bs=1M count=100 2>&1 | grep copied | awk '{print $(NF-1) " " $NF}')
-    rm -f /mnt/ssd/test_write
+    local ssd_write_speed=$(dd if=/dev/zero of=${STORAGE_HDD_PATH:-/mnt/hdd}/test_write bs=1M count=100 2>&1 | grep copied | awk '{print $(NF-1) " " $NF}')
+    rm -f ${STORAGE_HDD_PATH:-/mnt/hdd}/test_write
     log_message "SSD write speed: $ssd_write_speed"
 
     # Test HDD performance
@@ -159,7 +159,7 @@ SYSTEM SPECIFICATIONS
 ---------------------
 CPU Cores: $(nproc)
 Total Memory: $(free -h | grep Mem | awk '{print $2}')
-SSD Mount: $(df -h /mnt/ssd | awk 'NR==2 {print $2 " (" $5 " used)"}')
+SSD Mount: $(df -h ${STORAGE_HDD_PATH:-/mnt/hdd} | awk 'NR==2 {print $2 " (" $5 " used)"}')
 HDD Mount: $(df -h /mnt/hdd | awk 'NR==2 {print $2 " (" $5 " used)"}')
 
 APPLICATION STATUS

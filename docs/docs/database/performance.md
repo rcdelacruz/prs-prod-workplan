@@ -268,7 +268,7 @@ sudo swapoff -a
 sudo sysctl vm.swappiness=1
 
 # Optimize file system
-sudo mount -o remount,noatime,nodiratime /mnt/ssd
+sudo mount -o remount,noatime,nodiratime /mnt/hdd
 ```
 
 ### Storage Performance Configuration
@@ -384,13 +384,13 @@ FROM timescaledb_information.compressed_hypertable_stats;
 
 ```sql
 -- Configure automatic data movement to optimize performance
-SELECT add_move_chunk_policy('notifications', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('audit_logs', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('requisitions', INTERVAL '30 days', 'hdd_cold');
+SELECT add_move_chunk_policy('notifications', INTERVAL '30 days', 'pg_default');
+SELECT add_move_chunk_policy('audit_logs', INTERVAL '30 days', 'pg_default');
+SELECT add_move_chunk_policy('requisitions', INTERVAL '30 days', 'pg_default');
 
 -- Move history tables faster
-SELECT add_move_chunk_policy('requisition_canvass_histories', INTERVAL '14 days', 'hdd_cold');
-SELECT add_move_chunk_policy('requisition_item_histories', INTERVAL '14 days', 'hdd_cold');
+SELECT add_move_chunk_policy('requisition_canvass_histories', INTERVAL '14 days', 'pg_default');
+SELECT add_move_chunk_policy('requisition_item_histories', INTERVAL '14 days', 'pg_default');
 
 -- Monitor data movement
 SELECT 

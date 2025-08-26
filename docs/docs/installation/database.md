@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide covers the complete setup of TimescaleDB with dual storage architecture for the PRS on-premises deployment.
+This guide covers the complete setup of TimescaleDB with HDD-only storage architecture for the PRS on-premises deployment.
 
 ## TimescaleDB Installation
 
@@ -32,7 +32,7 @@ postgres:
     -c shared_preload_libraries=timescaledb
   volumes:
     - database_data:/var/lib/postgresql/data
-    - /mnt/ssd/postgresql-hot:/mnt/ssd/postgresql-hot
+    - /mnt/hdd/postgresql-hot:/mnt/hdd/postgresql-hot
     - /mnt/hdd/postgresql-cold:/mnt/hdd/postgresql-cold
     - /mnt/hdd/postgres-backups:/var/lib/postgresql/backups
 ```
@@ -69,11 +69,11 @@ SELECT pg_reload_conf();
 
 ```sql
 -- Create tablespaces for tiered storage
-CREATE TABLESPACE ssd_hot LOCATION '/mnt/ssd/postgresql-hot';
-CREATE TABLESPACE hdd_cold LOCATION '/mnt/hdd/postgresql-cold';
+-- Tablespace creation not needed (HDD-only)
+-- Tablespace creation not needed (HDD-only)
 
 -- Set default tablespace for new chunks
-ALTER DATABASE prs_production SET default_tablespace = ssd_hot;
+ALTER DATABASE prs_production SET default_tablespace = pg_default;
 
 -- Verify tablespaces
 SELECT spcname, pg_tablespace_location(oid) FROM pg_tablespace;
@@ -82,9 +82,9 @@ SELECT spcname, pg_tablespace_location(oid) FROM pg_tablespace;
 ### Configure Storage Tiers
 
 ```sql
--- Configure TimescaleDB for dual storage
-ALTER SYSTEM SET temp_tablespaces = 'ssd_hot';
-ALTER SYSTEM SET default_tablespace = 'ssd_hot';
+-- Configure TimescaleDB for HDD-only storage
+ALTER SYSTEM SET temp_tablespaces = 'pg_default';
+ALTER SYSTEM SET default_tablespace = 'pg_default';
 
 -- Reload configuration
 SELECT pg_reload_conf();
@@ -199,14 +199,14 @@ SELECT add_compression_policy('delivery_receipts', INTERVAL '30 days');
 
 ```sql
 -- Move chunks older than 30 days to HDD storage
-SELECT add_move_chunk_policy('notifications', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('audit_logs', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('requisitions', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('purchase_orders', INTERVAL '30 days', 'hdd_cold');
+SELECT add_move_chunk_policy('notifications', INTERVAL '30 days', 'pg_default');
+SELECT add_move_chunk_policy('audit_logs', INTERVAL '30 days', 'pg_default');
+SELECT add_move_chunk_policy('requisitions', INTERVAL '30 days', 'pg_default');
+SELECT add_move_chunk_policy('purchase_orders', INTERVAL '30 days', 'pg_default');
 
 -- Move history tables after 14 days (faster archival)
-SELECT add_move_chunk_policy('requisition_canvass_histories', INTERVAL '14 days', 'hdd_cold');
-SELECT add_move_chunk_policy('requisition_item_histories', INTERVAL '14 days', 'hdd_cold');
+SELECT add_move_chunk_policy('requisition_canvass_histories', INTERVAL '14 days', 'pg_default');
+SELECT add_move_chunk_policy('requisition_item_histories', INTERVAL '14 days', 'pg_default');
 ```
 
 ## Database Validation
@@ -328,11 +328,11 @@ ALTER ROLE prs_application VALID UNTIL 'infinity';
 docker logs prs-onprem-postgres-timescale
 
 # Check storage permissions
-ls -la /mnt/ssd/postgresql-hot
+ls -la /mnt/hdd/postgresql-hot
 ls -la /mnt/hdd/postgresql-cold
 
 # Fix permissions if needed
-sudo chown -R 999:999 /mnt/ssd/postgresql-hot /mnt/hdd/postgresql-cold
+sudo chown -R 999:999 /mnt/hdd/postgresql-hot /mnt/hdd/postgresql-cold
 ```
 
 #### Connection Issues
@@ -380,7 +380,7 @@ ORDER BY n_dead_tup DESC;
 ---
 
 !!! success "Database Ready"
-    Once all setup steps are completed, your TimescaleDB database is ready for production use with dual storage architecture and zero-deletion compliance.
+    Once all setup steps are completed, your TimescaleDB database is ready for production use with HDD-only storage architecture and zero-deletion compliance.
 
 !!! tip "Next Steps"
     Proceed to [SSL Configuration](ssl.md) to secure your deployment with HTTPS.

@@ -204,7 +204,7 @@ groups:
 
       # Storage space alerts
       - alert: DiskSpaceHigh
-        expr: prs:disk_usage:ratio{mountpoint="/mnt/ssd"} > 0.85
+        expr: prs:disk_usage:ratio{mountpoint="/mnt/hdd"} > 0.85
         for: 1m
         labels:
           severity: warning
@@ -213,7 +213,7 @@ groups:
           description: "SSD usage is {{ $value | humanizePercentage }}"
 
       - alert: DiskSpaceCritical
-        expr: prs:disk_usage:ratio{mountpoint="/mnt/ssd"} > 0.90
+        expr: prs:disk_usage:ratio{mountpoint="/mnt/hdd"} > 0.90
         for: 1m
         labels:
           severity: critical
@@ -320,8 +320,8 @@ groups:
         "type": "graph",
         "targets": [
           {
-            "expr": "prs:disk_usage:ratio{mountpoint=\"/mnt/ssd\"} * 100",
-            "legendFormat": "SSD Usage %"
+            "expr": "prs:disk_usage:ratio{mountpoint=\"/mnt/hdd\"} * 100",
+            "legendFormat": "HDD Usage %"
           },
           {
             "expr": "prs:disk_usage:ratio{mountpoint=\"/mnt/hdd\"} * 100",
@@ -576,7 +576,7 @@ monitor_application() {
 monitor_storage() {
     # SSD usage
     local ssd_usage
-    ssd_usage=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+    ssd_usage=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
     echo "prs_ssd_usage_percent $ssd_usage" >> "$METRICS_FILE"
     
     # HDD usage

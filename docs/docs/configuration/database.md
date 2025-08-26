@@ -127,14 +127,14 @@ SELECT add_compression_policy('requisitions', INTERVAL '30 days');
 
 ```sql
 -- Configure automatic data movement to HDD storage
-SELECT add_move_chunk_policy('notifications', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('audit_logs', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('requisitions', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('purchase_orders', INTERVAL '30 days', 'hdd_cold');
+SELECT add_move_chunk_policy('notifications', INTERVAL '30 days', 'pg_default');
+SELECT add_move_chunk_policy('audit_logs', INTERVAL '30 days', 'pg_default');
+SELECT add_move_chunk_policy('requisitions', INTERVAL '30 days', 'pg_default');
+SELECT add_move_chunk_policy('purchase_orders', INTERVAL '30 days', 'pg_default');
 
 -- Configure faster movement for history tables
-SELECT add_move_chunk_policy('requisition_canvass_histories', INTERVAL '14 days', 'hdd_cold');
-SELECT add_move_chunk_policy('requisition_item_histories', INTERVAL '14 days', 'hdd_cold');
+SELECT add_move_chunk_policy('requisition_canvass_histories', INTERVAL '14 days', 'pg_default');
+SELECT add_move_chunk_policy('requisition_item_histories', INTERVAL '14 days', 'pg_default');
 ```
 
 ## Index Optimization
@@ -143,13 +143,13 @@ SELECT add_move_chunk_policy('requisition_item_histories', INTERVAL '14 days', '
 
 ```sql
 -- Time-based indexes for efficient queries
-CREATE INDEX CONCURRENTLY idx_notifications_time 
+CREATE INDEX CONCURRENTLY idx_notifications_time
 ON notifications (created_at DESC);
 
-CREATE INDEX CONCURRENTLY idx_audit_logs_time 
+CREATE INDEX CONCURRENTLY idx_audit_logs_time
 ON audit_logs (created_at DESC);
 
-CREATE INDEX CONCURRENTLY idx_requisitions_time 
+CREATE INDEX CONCURRENTLY idx_requisitions_time
 ON requisitions (created_at DESC);
 ```
 
@@ -157,14 +157,14 @@ ON requisitions (created_at DESC);
 
 ```sql
 -- User-specific time-based queries
-CREATE INDEX CONCURRENTLY idx_notifications_user_time 
+CREATE INDEX CONCURRENTLY idx_notifications_user_time
 ON notifications (user_id, created_at DESC);
 
-CREATE INDEX CONCURRENTLY idx_audit_logs_user_action_time 
+CREATE INDEX CONCURRENTLY idx_audit_logs_user_action_time
 ON audit_logs (user_id, action, created_at DESC);
 
 -- Department-specific queries
-CREATE INDEX CONCURRENTLY idx_requisitions_dept_status_time 
+CREATE INDEX CONCURRENTLY idx_requisitions_dept_status_time
 ON requisitions (department_id, status, created_at DESC);
 ```
 
@@ -172,12 +172,12 @@ ON requisitions (department_id, status, created_at DESC);
 
 ```sql
 -- Indexes for hot data only (performance optimization)
-CREATE INDEX CONCURRENTLY idx_notifications_recent 
-ON notifications (user_id, created_at DESC) 
+CREATE INDEX CONCURRENTLY idx_notifications_recent
+ON notifications (user_id, created_at DESC)
 WHERE created_at >= NOW() - INTERVAL '30 days';
 
-CREATE INDEX CONCURRENTLY idx_requisitions_active 
-ON requisitions (department_id, status, created_at DESC) 
+CREATE INDEX CONCURRENTLY idx_requisitions_active
+ON requisitions (department_id, status, created_at DESC)
 WHERE status IN ('pending', 'approved', 'processing');
 ```
 
@@ -212,14 +212,14 @@ ALTER SYSTEM SET pg_stat_statements.max = 10000;
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 -- View slow queries
-SELECT 
+SELECT
     query,
     calls,
     total_time,
     mean_time,
     rows
-FROM pg_stat_statements 
-ORDER BY total_time DESC 
+FROM pg_stat_statements
+ORDER BY total_time DESC
 LIMIT 10;
 ```
 
@@ -235,14 +235,14 @@ const poolConfig = {
   user: process.env.POSTGRES_USER,
   password: process.env.POSTGRES_PASSWORD,
   port: process.env.POSTGRES_PORT,
-  
+
   // Pool settings optimized for on-premises
   min: 5,                    // Minimum connections
   max: 20,                   // Maximum connections (vs 3 on cloud)
   acquire: 30000,            // Connection timeout (30s)
   idle: 10000,               // Idle timeout (10s)
   evict: 20000,              // Eviction timeout (20s)
-  
+
   // Retry configuration
   retry: {
     max: 3,
@@ -379,7 +379,7 @@ REVOKE EXECUTE ON FUNCTION pg_ls_dir(text) FROM PUBLIC;
 ```sql
 -- Create monitoring views
 CREATE OR REPLACE VIEW v_database_stats AS
-SELECT 
+SELECT
     datname,
     numbackends as connections,
     xact_commit as commits,
@@ -387,11 +387,11 @@ SELECT
     blks_read,
     blks_hit,
     round(blks_hit::numeric / (blks_hit + blks_read) * 100, 2) as cache_hit_ratio
-FROM pg_stat_database 
+FROM pg_stat_database
 WHERE datname = 'prs_production';
 
 CREATE OR REPLACE VIEW v_table_stats AS
-SELECT 
+SELECT
     schemaname,
     tablename,
     n_tup_ins as inserts,
@@ -412,10 +412,10 @@ ORDER BY n_live_tup DESC;
 ```sql
 -- Create TimescaleDB monitoring views
 CREATE OR REPLACE VIEW v_chunk_stats AS
-SELECT 
+SELECT
     hypertable_name,
     chunk_name,
-    tablespace_name,
+    'HDD (default)' as storage_location,
     is_compressed,
     pg_size_pretty(chunk_size) as size,
     range_start,
@@ -424,12 +424,12 @@ FROM timescaledb_information.chunks
 ORDER BY hypertable_name, range_start DESC;
 
 CREATE OR REPLACE VIEW v_compression_stats AS
-SELECT 
+SELECT
     hypertable_name,
     pg_size_pretty(before_compression_total_bytes) as before_compression,
     pg_size_pretty(after_compression_total_bytes) as after_compression,
     round(
-        (before_compression_total_bytes::numeric - after_compression_total_bytes::numeric) 
+        (before_compression_total_bytes::numeric - after_compression_total_bytes::numeric)
         / before_compression_total_bytes::numeric * 100, 2
     ) as compression_ratio_percent
 FROM timescaledb_information.compressed_hypertable_stats;
@@ -446,7 +446,7 @@ ANALYZE audit_logs;
 ANALYZE requisitions;
 
 -- Check for bloated tables
-SELECT 
+SELECT
     schemaname,
     tablename,
     n_dead_tup,
@@ -464,7 +464,7 @@ ORDER BY dead_ratio DESC;
 VACUUM ANALYZE;
 
 -- Reindex if needed (check for index bloat first)
-SELECT 
+SELECT
     schemaname,
     tablename,
     indexname,

@@ -51,9 +51,9 @@ docker-compose -f 02-docker-configuration/docker-compose.onprem.yml restart back
 **Permission Issues:**
 ```bash
 # Fix storage permissions
-sudo chown -R 999:999 /mnt/ssd/postgresql-hot /mnt/hdd/postgresql-cold
-sudo chown -R 999:999 /mnt/ssd/redis-data
-sudo chown -R 472:472 /mnt/ssd/grafana-data
+sudo chown -R 999:999 /mnt/hdd/postgresql-hot /mnt/hdd/postgresql-cold
+sudo chown -R 999:999 /mnt/hdd/redis-data
+sudo chown -R 472:472 /mnt/hdd/grafana-data
 
 # Fix file permissions
 sudo chmod 644 02-docker-configuration/.env
@@ -299,13 +299,13 @@ VACUUM ANALYZE notifications;
 
 ```bash
 # Check storage usage
-df -h /mnt/ssd /mnt/hdd
+df -h /mnt/hdd /mnt/hdd
 
 # Check inode usage
-df -i /mnt/ssd /mnt/hdd
+df -i /mnt/hdd /mnt/hdd
 
 # Check large files
-find /mnt/ssd -type f -size +100M -exec ls -lh {} \;
+find /mnt/hdd -type f -size +100M -exec ls -lh {} \;
 find /mnt/hdd -type f -size +1G -exec ls -lh {} \;
 
 # Check RAID status
@@ -317,15 +317,15 @@ cat /proc/mdstat
 **SSD Full (>90%):**
 ```bash
 # Emergency cleanup
-find /mnt/ssd/logs -name "*.log" -mtime +1 -exec gzip {} \;
+find /mnt/hdd/logs -name "*.log" -mtime +1 -exec gzip {} \;
 docker system prune -f
 
 # Move old data to HDD
 docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-SELECT move_chunk(chunk_name, 'hdd_cold')
+SELECT move_chunk(chunk_name, 'pg_default')
 FROM timescaledb_information.chunks 
 WHERE range_start < NOW() - INTERVAL '14 days'
-AND tablespace_name = 'ssd_hot'
+AND tablespace_name = 'pg_default'
 LIMIT 10;
 "
 
@@ -335,7 +335,7 @@ SELECT compress_chunk(chunk_name)
 FROM timescaledb_information.chunks 
 WHERE range_start < NOW() - INTERVAL '3 days'
 AND NOT is_compressed
-AND tablespace_name = 'ssd_hot';
+AND tablespace_name = 'pg_default';
 "
 ```
 
@@ -549,9 +549,9 @@ docker-compose -f 02-docker-configuration/docker-compose.onprem.yml down
 docker system prune -f
 
 # Check and fix storage permissions
-sudo chown -R 999:999 /mnt/ssd/postgresql-hot /mnt/hdd/postgresql-cold
-sudo chown -R 999:999 /mnt/ssd/redis-data
-sudo chown -R 472:472 /mnt/ssd/grafana-data
+sudo chown -R 999:999 /mnt/hdd/postgresql-hot /mnt/hdd/postgresql-cold
+sudo chown -R 999:999 /mnt/hdd/redis-data
+sudo chown -R 472:472 /mnt/hdd/grafana-data
 
 # Restart Docker daemon
 sudo systemctl restart docker
@@ -604,14 +604,14 @@ fi
 REDIS_BACKUP="/mnt/hdd/redis-backups/redis_backup_${BACKUP_DATE}_*.rdb.gz"
 if [ -f $REDIS_BACKUP ]; then
     docker-compose -f 02-docker-configuration/docker-compose.onprem.yml stop redis
-    gunzip -c "$REDIS_BACKUP" > /mnt/ssd/redis-data/dump.rdb
+    gunzip -c "$REDIS_BACKUP" > /mnt/hdd/redis-data/dump.rdb
     docker-compose -f 02-docker-configuration/docker-compose.onprem.yml start redis
 fi
 
 # Restore file uploads
 FILE_BACKUP="/mnt/hdd/file-backups/$BACKUP_DATE"
 if [ -d "$FILE_BACKUP" ]; then
-    rsync -av "$FILE_BACKUP/" /mnt/ssd/uploads/
+    rsync -av "$FILE_BACKUP/" /mnt/hdd/uploads/
 fi
 
 # Start services

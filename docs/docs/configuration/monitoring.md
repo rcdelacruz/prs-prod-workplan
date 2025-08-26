@@ -16,22 +16,22 @@ graph TB
         NGINX[Nginx Exporter<br/>Web Server Metrics] --> PROM
         CADVISOR[cAdvisor<br/>Container Metrics] --> PROM
     end
-    
+
     subgraph "Storage & Processing"
         PROM --> TSDB[Prometheus TSDB<br/>Time Series Storage]
     end
-    
+
     subgraph "Visualization"
         TSDB --> GRAFANA[Grafana<br/>Dashboards & Visualization]
     end
-    
+
     subgraph "Alerting"
         TSDB --> ALERTMGR[Alert Manager<br/>Alert Processing]
         ALERTMGR --> EMAIL[Email Notifications]
         ALERTMGR --> SLACK[Slack Integration]
         ALERTMGR --> WEBHOOK[Custom Webhooks]
     end
-    
+
     style PROM fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     style GRAFANA fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
     style ALERTMGR fill:#fff3e0,stroke:#ff9800,stroke-width:2px
@@ -165,7 +165,7 @@ groups:
       - record: prs:database_cache_hit_ratio
         expr: |
           (
-            pg_stat_database_blks_hit{datname="prs_production"} / 
+            pg_stat_database_blks_hit{datname="prs_production"} /
             (pg_stat_database_blks_hit{datname="prs_production"} + pg_stat_database_blks_read{datname="prs_production"})
           )
 
@@ -182,14 +182,14 @@ groups:
       - record: prs:memory_usage_percent
         expr: |
           (
-            (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / 
+            (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) /
             node_memory_MemTotal_bytes
           ) * 100
 
       - record: prs:disk_usage_percent
         expr: |
           (
-            (node_filesystem_size_bytes - node_filesystem_avail_bytes) / 
+            (node_filesystem_size_bytes - node_filesystem_avail_bytes) /
             node_filesystem_size_bytes
           ) * 100
 
@@ -197,14 +197,14 @@ groups:
       - record: prs:ssd_usage_percent
         expr: |
           (
-            (node_filesystem_size_bytes{mountpoint="/mnt/ssd"} - node_filesystem_avail_bytes{mountpoint="/mnt/ssd"}) / 
-            node_filesystem_size_bytes{mountpoint="/mnt/ssd"}
+            (node_filesystem_size_bytes{mountpoint="/mnt/hdd"} - node_filesystem_avail_bytes{mountpoint="/mnt/hdd"}) /
+            node_filesystem_size_bytes{mountpoint="/mnt/hdd"}
           ) * 100
 
       - record: prs:hdd_usage_percent
         expr: |
           (
-            (node_filesystem_size_bytes{mountpoint="/mnt/hdd"} - node_filesystem_avail_bytes{mountpoint="/mnt/hdd"}) / 
+            (node_filesystem_size_bytes{mountpoint="/mnt/hdd"} - node_filesystem_avail_bytes{mountpoint="/mnt/hdd"}) /
             node_filesystem_size_bytes{mountpoint="/mnt/hdd"}
           ) * 100
 
@@ -459,7 +459,7 @@ groups:
         "targets": [
           {
             "expr": "prs:ssd_usage_percent",
-            "legendFormat": "SSD Usage %"
+            "legendFormat": "HDD Usage %"
           },
           {
             "expr": "prs:hdd_usage_percent",
@@ -691,20 +691,20 @@ const fileUploads = new prometheus.Counter({
 // Middleware to collect metrics
 const metricsMiddleware = (req, res, next) => {
   const start = Date.now();
-  
+
   res.on('finish', () => {
     const duration = (Date.now() - start) / 1000;
     const route = req.route ? req.route.path : req.path;
-    
+
     httpRequestDuration
       .labels(req.method, route, res.statusCode)
       .observe(duration);
-    
+
     httpRequestsTotal
       .labels(req.method, route, res.statusCode)
       .inc();
   });
-  
+
   next();
 };
 
@@ -728,13 +728,13 @@ collect_app_metrics() {
     # Active user sessions
     ACTIVE_SESSIONS=$(docker exec prs-onprem-redis redis-cli -a "$REDIS_PASSWORD" eval "return #redis.call('keys', 'session:*')" 0)
     echo "prs_active_sessions_total $ACTIVE_SESSIONS" >> "$METRICS_FILE"
-    
+
     # Queue lengths
     QUEUE_LENGTH=$(docker exec prs-onprem-redis redis-cli -a "$REDIS_PASSWORD" llen "queue:default")
     echo "prs_queue_length{queue=\"default\"} $QUEUE_LENGTH" >> "$METRICS_FILE"
-    
+
     # File upload storage
-    UPLOAD_SIZE=$(du -sb /mnt/ssd/uploads | cut -f1)
+    UPLOAD_SIZE=$(du -sb /mnt/hdd/uploads | cut -f1)
     echo "prs_upload_storage_bytes $UPLOAD_SIZE" >> "$METRICS_FILE"
 }
 
@@ -742,18 +742,18 @@ collect_app_metrics() {
 collect_db_metrics() {
     # Table sizes
     docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "
-    SELECT 
+    SELECT
         'prs_table_size_bytes{table=\"' || tablename || '\"} ' || pg_total_relation_size(schemaname||'.'||tablename)
-    FROM pg_tables 
+    FROM pg_tables
     WHERE schemaname = 'public';
     " >> "$METRICS_FILE"
-    
+
     # TimescaleDB chunk metrics
     docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "
-    SELECT 
-        'prs_timescaledb_chunks{hypertable=\"' || hypertable_name || '\",tablespace=\"' || tablespace_name || '\"} ' || COUNT(*)
+    SELECT
+        'prs_timescaledb_chunks{hypertable=\"' || hypertable_name || '\",storage=\"HDD\"} ' || COUNT(*)
     FROM timescaledb_information.chunks
-    GROUP BY hypertable_name, tablespace_name;
+    GROUP BY hypertable_name;
     " >> "$METRICS_FILE"
 }
 

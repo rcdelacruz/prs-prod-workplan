@@ -15,7 +15,7 @@ By following this documentation, you'll deploy a production-ready system with:
 - **12,000% more storage capacity** (2.4TB vs 20GB)
 
 ### Enterprise Features
-- **Dual Storage Architecture** with automatic SSD/HDD tiering
+- **Dual Storage Architecture** with automatic HDD-only tiering
 - **Zero-Deletion Data Policy** with TimescaleDB compression
 - **Enterprise Security** with SSL/TLS and hardening
 - **Automated Operations** with monitoring and backup
@@ -83,7 +83,7 @@ graph TB
     end
     
     subgraph "Storage Tiers"
-        DB --> SSD[SSD Storage<br/>470GB RAID1<br/>Hot Data 0-30 days]
+        DB --> SSD[HDD Storage<br/>470GB RAID1<br/>Hot Data 0-30 days]
         DB --> HDD[HDD Storage<br/>2.4TB RAID5<br/>Cold Data 30+ days]
     end
     
@@ -125,7 +125,7 @@ Before starting, ensure you have:
 
 ### Hardware Requirements
 - [ ] **Server**: 16GB RAM, 8+ CPU cores
-- [ ] **SSD Storage**: 470GB RAID1 array
+- [ ] **HDD Storage**: 470GB RAID1 array
 - [ ] **HDD Storage**: 2.4TB RAID5 array
 - [ ] **Network**: 1 Gbps interface
 - [ ] **UPS**: Uninterruptible power supply

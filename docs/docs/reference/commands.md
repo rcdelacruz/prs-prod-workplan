@@ -146,7 +146,7 @@ GROUP BY hypertable_name, tablespace_name;
 SELECT compress_chunk('_timescaledb_internal._hyper_1_1_chunk');
 
 -- Manual data movement
-SELECT move_chunk('_timescaledb_internal._hyper_1_1_chunk', 'hdd_cold');
+SELECT move_chunk('_timescaledb_internal._hyper_1_1_chunk', 'pg_default');
 ```
 
 ### Maintenance
@@ -287,7 +287,7 @@ docker exec prs-onprem-postgres-timescale pgbench -i -s 10 prs_production
 docker exec prs-onprem-postgres-timescale pgbench -c 5 -j 2 -t 1000 prs_production
 
 # Storage performance testing
-sudo fio --name=test --filename=/mnt/ssd/test --size=1G --rw=randwrite --bs=4k --numjobs=4 --time_based --runtime=60
+sudo fio --name=test --filename=/mnt/hdd/test --size=1G --rw=randwrite --bs=4k --numjobs=4 --time_based --runtime=60
 ```
 
 ## Security Commands
@@ -373,17 +373,17 @@ sha256sum -c /mnt/hdd/postgres-backups/daily/*.sha256
 
 ```bash
 # View application logs
-tail -f /mnt/ssd/logs/application.log
-tail -f /mnt/ssd/logs/error.log
+tail -f /mnt/hdd/logs/application.log
+tail -f /mnt/hdd/logs/error.log
 
 # Rotate logs
 ./scripts/log-rotation.sh
 
 # Archive old logs
-find /mnt/ssd/logs -name "*.log" -mtime +7 -exec mv {} /mnt/hdd/app-logs-archive/ \;
+find /mnt/hdd/logs -name "*.log" -mtime +7 -exec mv {} /mnt/hdd/app-logs-archive/ \;
 
 # Compress logs
-find /mnt/ssd/logs -name "*.log" -mtime +1 -exec gzip {} \;
+find /mnt/hdd/logs -name "*.log" -mtime +1 -exec gzip {} \;
 ```
 
 ### Cleanup
@@ -458,8 +458,8 @@ docker-compose -f 02-docker-configuration/docker-compose.onprem.yml up -d
 ./scripts/restore-database.sh /mnt/hdd/postgres-backups/daily/latest-backup.sql
 
 # Emergency storage cleanup
-sudo find /mnt/ssd -name "*.tmp" -delete
-sudo find /mnt/ssd/logs -name "*.log" -mtime +1 -exec gzip {} \;
+sudo find /mnt/hdd -name "*.tmp" -delete
+sudo find /mnt/hdd/logs -name "*.log" -mtime +1 -exec gzip {} \;
 ```
 
 ---

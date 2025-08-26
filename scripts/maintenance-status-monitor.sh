@@ -78,7 +78,7 @@ check_system_health() {
     log_message "Checking system health indicators"
 
     # Check disk space
-    local ssd_usage=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+    local ssd_usage=$(df ${STORAGE_HDD_PATH:-/mnt/hdd} | awk 'NR==2 {print $5}' | sed 's/%//')
     local hdd_usage=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
     local root_usage=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
 
@@ -120,7 +120,7 @@ generate_status_report() {
     mkdir -p "$(dirname "$STATUS_FILE")"
 
     local current_time=$(date -Iseconds)
-    local ssd_usage=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+    local ssd_usage=$(df ${STORAGE_HDD_PATH:-/mnt/hdd} | awk 'NR==2 {print $5}' | sed 's/%//')
     local hdd_usage=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
 
     # Get service status

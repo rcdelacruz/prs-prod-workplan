@@ -125,7 +125,7 @@ sudo renice 5 $(pgrep prometheus)      # Lower priority for monitoring
 
 ```bash
 # Enable TRIM for SSD longevity
-sudo fstrim -v /mnt/ssd
+sudo fstrim -v /mnt/hdd
 
 # Set optimal I/O scheduler
 echo noop | sudo tee /sys/block/sda/queue/scheduler
@@ -155,7 +155,7 @@ hdparm -W1 /dev/md1
 ```bash
 # Mount options for performance
 # SSD mount options
-/dev/md0 /mnt/ssd ext4 defaults,noatime,discard,barrier=0 0 2
+/dev/md0 /mnt/hdd ext4 defaults,noatime,discard,barrier=0 0 2
 
 # HDD mount options
 /dev/md1 /mnt/hdd ext4 defaults,noatime,data=writeback 0 2

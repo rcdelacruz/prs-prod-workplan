@@ -82,35 +82,43 @@ check_memory() {
 check_storage() {
     echo -e "${BLUE}Storage Mount Points Check:${NC}"
 
-    # Check /mnt/ssd (CRITICAL - deploy script checks this)
-    if [ -d "/mnt/ssd" ]; then
-        print_success "/mnt/ssd exists"
-        if mountpoint -q /mnt/ssd; then
-            local ssd_space=$(df -h /mnt/ssd | awk 'NR==2{print $4}')
-            echo "   Available space: $ssd_space"
+    # Load environment variables to get configurable paths
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+    if [ -f "$PROJECT_DIR/02-docker-configuration/.env" ]; then
+        set -a
+        source "$PROJECT_DIR/02-docker-configuration/.env" 2>/dev/null || true
+        set +a
+    fi
+
+    # Use configurable storage paths
+    local HDD_PATH="${STORAGE_HDD_PATH:-/mnt/hdd}"
+    local NAS_PATH="${STORAGE_NAS_PATH:-/mnt/nas}"
+
+    # Check HDD storage (CRITICAL - deploy script checks this)
+    if [ -d "$HDD_PATH" ]; then
+        print_success "HDD storage exists: $HDD_PATH"
+        if mountpoint -q "$HDD_PATH" 2>/dev/null; then
+            local hdd_space=$(df -h "$HDD_PATH" | awk 'NR==2{print $4}')
+            echo "   Available space: $hdd_space"
         else
-            print_warning "/mnt/ssd exists but not mounted"
+            print_warning "HDD path exists but not mounted: $HDD_PATH"
         fi
     else
-        print_error "/mnt/ssd missing - DEPLOY SCRIPT WILL FAIL"
-        echo "   Create with: sudo mkdir -p /mnt/ssd"
+        print_error "HDD storage missing - DEPLOY SCRIPT WILL FAIL: $HDD_PATH"
+        echo "   Create with: sudo mkdir -p $HDD_PATH"
         OVERALL_STATUS=1
     fi
 
-    # Check /mnt/hdd (CRITICAL - deploy script checks this)
-    if [ -d "/mnt/hdd" ]; then
-        print_success "/mnt/hdd exists"
-        if mountpoint -q /mnt/hdd; then
-            local hdd_space=$(df -h /mnt/hdd | awk 'NR==2{print $4}')
-            echo "   Available space: $hdd_space"
+    # Check NAS storage (optional)
+    if [ "${BACKUP_TO_NAS:-false}" = "true" ]; then
+        if [ -d "$NAS_PATH" ]; then
+            print_success "NAS storage exists: $NAS_PATH"
         else
-            print_warning "/mnt/hdd exists but not mounted"
+            print_warning "NAS storage missing: $NAS_PATH (will be created during deployment)"
         fi
-    else
-        print_error "/mnt/hdd missing - DEPLOY SCRIPT WILL FAIL"
-        echo "   Create with: sudo mkdir -p /mnt/hdd"
-        OVERALL_STATUS=1
     fi
+
     echo ""
 }
 
@@ -268,12 +276,12 @@ show_summary() {
         echo -e "${GREEN}Ready for deployment:${NC}"
         echo "   1. cd /opt/prs/prs-deployment/scripts"
         echo "   2. ./quick-setup-helper.sh"
-        echo "   3. sudo ./deploy-onprem.sh deploy"
+        echo "   3. ./deploy-onprem.sh deploy"
     else
         print_error "Critical prerequisites missing!"
         echo ""
         echo -e "${RED}Fix these issues before deployment:${NC}"
-        echo "   • Ensure /mnt/ssd and /mnt/hdd exist"
+        echo "   • Ensure storage paths exist (check .env for STORAGE_HDD_PATH)"
         echo "   • Use non-root user account"
         echo "   • Verify sufficient RAM (16GB+)"
         echo "   • Install and authenticate GitHub CLI (gh auth login)"

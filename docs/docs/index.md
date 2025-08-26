@@ -1,6 +1,6 @@
 # PRS On-Premises Deployment Guide
 
-Welcome to the comprehensive deployment and maintenance guide for the **PRS (Procurement and Requisition System)** on-premises production environment.
+Welcome to the comprehensive deployment and maintenance guide for the **PRS (Purchase Request System)** on-premises production environment.
 
 ## Overview
 
@@ -55,7 +55,7 @@ cd prs-deployment/scripts
 **Step-by-step deployment for custom requirements:**
 
 1. **[Prerequisites](getting-started/prerequisites.md)** - System requirements and preparation
-2. **[Hardware Setup](hardware/requirements.md)** - Configure dual storage and network
+2. **[Hardware Setup](hardware/requirements.md)** - Configure HDD-only storage and network
 3. **[Installation](installation/environment.md)** - Deploy the complete system
 4. **[Configuration](configuration/application.md)** - Customize for your environment
 5. **[Testing](deployment/testing.md)** - Validate your deployment
@@ -98,7 +98,7 @@ graph TB
     end
 
     subgraph "Storage Tiers"
-        DB --> SSD[SSD Storage<br/>Hot Data 0-30 days]
+        DB --> SSD[HDD Storage<br/>Hot Data 0-30 days]
         DB --> HDD[HDD Storage<br/>Cold Data 30+ days]
     end
 

@@ -111,7 +111,7 @@ if [ "$ACTIVE_CONNECTIONS" -gt 100 ]; then
 fi
 
 # 5. Monitor disk usage
-SSD_USAGE=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+SSD_USAGE=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
 HDD_USAGE=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
 
 log_message "Storage usage - SSD: ${SSD_USAGE}%, HDD: ${HDD_USAGE}%"
@@ -120,10 +120,10 @@ if [ "$SSD_USAGE" -gt 85 ]; then
     log_message "WARNING: SSD usage high (${SSD_USAGE}%)"
     # Trigger data movement
     docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-    SELECT move_chunk(chunk_name, 'hdd_cold')
+    SELECT move_chunk(chunk_name, 'pg_default')
     FROM timescaledb_information.chunks 
     WHERE range_start < NOW() - INTERVAL '14 days'
-    AND tablespace_name = 'ssd_hot'
+    AND tablespace_name = 'pg_default'
     LIMIT 5;
     "
 fi
@@ -337,10 +337,10 @@ AND NOT is_compressed;
 # 5. Data movement optimization
 log_message "Optimizing data movement"
 docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-SELECT move_chunk(chunk_name, 'hdd_cold')
+SELECT move_chunk(chunk_name, 'pg_default')
 FROM timescaledb_information.chunks 
 WHERE range_start < NOW() - INTERVAL '30 days'
-AND tablespace_name = 'ssd_hot';
+AND tablespace_name = 'pg_default';
 "
 
 # 6. Generate maintenance report

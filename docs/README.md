@@ -70,7 +70,7 @@ ls -la site/
 
 ### 🖥️ Hardware & Infrastructure
 - **Requirements**: Detailed hardware specifications
-- **Storage**: SSD/HDD dual storage configuration
+- **Storage**: HDD-only HDD-only storage configuration
 - **Network**: Network setup and optimization
 - **Optimization**: Performance tuning
 
@@ -93,7 +93,7 @@ ls -la site/
 - **Troubleshooting**: Common issues
 
 ### 📊 Database Management
-- **TimescaleDB**: Complete guide to dual storage
+- **TimescaleDB**: Complete guide to HDD-only storage
 - **Backup**: Backup and recovery procedures
 - **Performance**: Query optimization
 - **Maintenance**: Routine database tasks

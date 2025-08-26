@@ -568,7 +568,7 @@ sudo tee /etc/audit/rules.d/prs-audit.rules << 'EOF'
 
 # Monitor PRS application
 -w /opt/prs-deployment -p wa -k prs-config
--w /mnt/ssd -p wa -k prs-data
+-w /mnt/hdd -p wa -k prs-data
 -w /mnt/hdd -p wa -k prs-data
 EOF
 

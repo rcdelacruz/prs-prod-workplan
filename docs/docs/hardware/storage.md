@@ -2,11 +2,11 @@
 
 ## Overview
 
-The PRS system implements a sophisticated dual-storage architecture that automatically manages data lifecycle between high-performance SSD and high-capacity HDD storage tiers.
+The PRS system implements a simplified HDD-only storage architecture that provides cost-effective, high-capacity storage for all data types. This configuration eliminates the complexity of dual-tier storage management while maintaining excellent performance for typical business workloads.
 
-## Dual Storage Architecture
+## Simplified HDD-Only Architecture
 
-### Tiers
+### Architecture
 
 ```mermaid
 graph TB
@@ -15,29 +15,23 @@ graph TB
         APP --> READ[Data Queries]
     end
 
-    subgraph "SSD Tier (470GB RAID1)"
-        WRITE --> SSD_HOT[Hot Data<br/>0-30 days]
-        SSD_HOT --> SSD_COMP[Compressed Data<br/>7-30 days]
+    subgraph "HDD Storage (2TB+ Single Tier)"
+        WRITE --> HDD_ALL[All Data<br/>Single Location]
+        HDD_ALL --> HDD_COMP[Compressed Data<br/>7+ days]
+        HDD_COMP --> HDD_ARCH[Archived Data<br/>Long-term]
     end
 
-    subgraph "HDD Tier (2.4TB RAID5)"
-        SSD_COMP --> HDD_COLD[Cold Data<br/>30+ days]
-        HDD_COLD --> HDD_ARCH[Archived Data<br/>1+ years]
+    subgraph "Data Management"
+        AUTO1[Auto Compress<br/>7 days] --> HDD_COMP
+        AUTO2[Auto Archive<br/>1+ years] --> HDD_ARCH
     end
 
-    subgraph "Data Movement"
-        AUTO1[Auto Compress<br/>7 days] --> SSD_COMP
-        AUTO2[Auto Move<br/>30 days] --> HDD_COLD
-    end
-
-    READ --> SSD_HOT
-    READ --> SSD_COMP
-    READ --> HDD_COLD
+    READ --> HDD_ALL
+    READ --> HDD_COMP
     READ --> HDD_ARCH
 
-    style SSD_HOT fill:#e3f2fd,stroke:#2196f3,stroke-width:2px
-    style SSD_COMP fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
-    style HDD_COLD fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px
+    style HDD_ALL fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
+    style HDD_COMP fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px
     style HDD_ARCH fill:#fce4ec,stroke:#e91e63,stroke-width:2px
     style APP fill:#fff3e0,stroke:#ff9800,stroke-width:2px
 ```
@@ -46,116 +40,101 @@ graph TB
 
 | Storage Tier | Technology | Capacity | Access Time | Use Case |
 |--------------|------------|----------|-------------|----------|
-| **SSD Hot** | NVMe/SATA SSD | 470GB | <50ms | Active operations, recent data |
-| **SSD Compressed** | NVMe/SATA SSD | 60-80% savings | <100ms | Recent queries, cached data |
-| **HDD Cold** | SATA HDD RAID5 | 2.4TB+ | <2s | Historical queries, reports |
-| **HDD Archive** | SATA HDD RAID5 | Unlimited | <5s | Long-term storage, compliance |
+| **HDD All Data** | SATA HDD | 2TB+ | <2s | All operations, active data |
+| **HDD Compressed** | SATA HDD | 60-80% savings | <3s | Older data, cached queries |
+| **HDD Archive** | SATA HDD | Unlimited | <5s | Long-term storage, compliance |
 
-## SSD Storage Configuration (470GB RAID1)
+## HDD Storage Configuration (2TB+ Single Drive or RAID)
 
 ### Strategy
 
 | Component | Allocation | Purpose | Performance |
 |-----------|------------|---------|-------------|
-| **PostgreSQL Hot Data** | 200 GB | Recent database records (0-30 days) | <50ms queries |
-| **Redis Persistence** | 50 GB | Cache snapshots and AOF files | <10ms access |
-| **Application Uploads** | 100 GB | User files and attachments | <100ms retrieval |
-| **System Logs** | 50 GB | Active application and system logs | Real-time logging |
-| **Nginx Cache** | 20 GB | Web server static file cache | <5ms serving |
-| **Monitoring Data** | 30 GB | Prometheus metrics and Grafana data | <50ms dashboards |
-| **System Reserve** | 20 GB | Emergency space and temporary files | Buffer space |
+| **PostgreSQL Data** | 800 GB | All database records and indexes | <2s queries |
+| **Redis Persistence** | 100 GB | Cache snapshots and AOF files | <3s access |
+| **Application Uploads** | 500 GB | User files and attachments | <3s retrieval |
+| **System Logs** | 200 GB | Application and system logs | <2s access |
+| **Nginx Cache** | 50 GB | Web server static file cache | <2s serving |
+| **Monitoring Data** | 100 GB | Prometheus metrics and Grafana data | <3s dashboards |
+| **Backups** | 200 GB | Database and application backups | Archive access |
+| **System Reserve** | 50 GB | Emergency space and temporary files | Buffer space |
 
 ### Mount Configuration
 
 ```bash
-# Optimal SSD mount options for performance
-/dev/md0 /mnt/ssd ext4 defaults,noatime,discard,barrier=0 0 2
+# Optimal HDD mount options for reliability
+/dev/sda1 /mnt/hdd ext4 defaults,noatime,barrier=1 0 2
 
 # Mount options explained:
 # noatime    - Don't update access times (performance boost)
-# discard    - Enable TRIM support for SSD longevity
-# barrier=0  - Disable write barriers (safe with UPS)
-```
-
-### Performance Optimization
-
-```bash
-# Set I/O scheduler for SSD
-echo noop | sudo tee /sys/block/sda/queue/scheduler
-
-# Optimize read-ahead for SSD
-echo 256 | sudo tee /sys/block/sda/queue/read_ahead_kb
-
-# Set optimal queue depth
-echo 32 | sudo tee /sys/block/sda/queue/nr_requests
-```
-
-## HDD Storage Configuration (2.4TB RAID5)
-
-### Strategy
-
-| Component | Allocation | Purpose | Retention |
-|-----------|------------|---------|-----------|
-| **PostgreSQL Cold Data** | 1,000 GB | Historical database records (30+ days) | Permanent |
-| **Backup Archives** | 1,000 GB | Database and application backups | 1+ years |
-| **Log Archives** | 200 GB | Archived application and system logs | 2+ years |
-| **NAS Sync Staging** | 100 GB | Network storage synchronization | Temporary |
-| **Future Growth** | 100+ TB | Unlimited expansion capacity | As needed |
-
-### RAID5 Configuration
-
-```bash
-# Create RAID5 array (example with 4 drives)
-sudo mdadm --create /dev/md1 --level=5 --raid-devices=4 \
-  --chunk=256 /dev/sdb /dev/sdc /dev/sdd /dev/sde
-
-# Optimize RAID5 for large files
-echo 8192 | sudo tee /sys/block/md1/md/stripe_cache_size
-
-# Set read-ahead for sequential access
-echo 8192 | sudo tee /sys/block/md1/queue/read_ahead_kb
+# barrier=1  - Enable write barriers (data safety)
+# defaults   - Standard mount options for HDD
 ```
 
 ### Performance Optimization
 
 ```bash
 # Set I/O scheduler for HDD
-echo deadline | sudo tee /sys/block/md1/queue/scheduler
+echo deadline | sudo tee /sys/block/sda/queue/scheduler
 
-# Optimize for large sequential writes
-echo 2048 | sudo tee /sys/block/md1/queue/nr_requests
+# Optimize read-ahead for HDD
+echo 4096 | sudo tee /sys/block/sda/queue/read_ahead_kb
 
-# Enable write-back caching (with UPS)
-hdparm -W1 /dev/md1
+# Set optimal queue depth for HDD
+echo 128 | sudo tee /sys/block/sda/queue/nr_requests
+```
+
+## Optional RAID Configuration
+
+### RAID1 for Redundancy (Recommended)
+
+```bash
+# Create RAID1 array for redundancy (2 drives)
+sudo mdadm --create /dev/md0 --level=1 --raid-devices=2 \
+  /dev/sda /dev/sdb
+
+# Monitor RAID status
+cat /proc/mdstat
+
+# Set read-ahead for better performance
+echo 4096 | sudo tee /sys/block/md0/queue/read_ahead_kb
+```
+
+### Single Drive Configuration (Budget Option)
+
+```bash
+# Format single drive
+sudo mkfs.ext4 /dev/sda1
+
+# Create mount point
+sudo mkdir -p /mnt/hdd
+
+# Mount with optimal options
+sudo mount -o defaults,noatime /dev/sda1 /mnt/hdd
 ```
 
 ## Automatic Data Lifecycle
 
-### Movement Timeline
+### Simplified Timeline
 
 ```mermaid
 timeline
-    title Automatic Data Lifecycle Management
+    title Simplified Data Lifecycle Management
 
     Day 0     : New Data Created
-              : Stored on SSD
+              : Stored on HDD
               : Uncompressed
-              : <50ms access
+              : <2s access
 
     Day 7     : High-Volume Data
               : Auto-compressed
               : 60-80% space savings
-              : <100ms access
+              : <3s access
 
-    Day 14    : History Data
+    Day 30    : History Data
               : Auto-compressed
               : Optimized storage
-              : <100ms access
-
-    Day 30    : All Data
-              : Moved to HDD
-              : Compressed storage
-              : <2s access
+              : <3s access
 
     Long-term : Permanent Storage
               : Zero deletion
@@ -166,36 +145,34 @@ timeline
 ### Policies
 
 ```sql
--- Compression policies by data type
+-- Compression policies for HDD-only setup
 SELECT add_compression_policy('notifications', INTERVAL '7 days');
 SELECT add_compression_policy('audit_logs', INTERVAL '7 days');
 SELECT add_compression_policy('requisitions', INTERVAL '30 days');
 
--- Data movement policies
-SELECT add_move_chunk_policy('notifications', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('audit_logs', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('requisitions', INTERVAL '30 days', 'hdd_cold');
+-- No data movement policies needed - all data stays on HDD
+-- Compression provides space savings without complexity
 ```
 
 ## Storage Monitoring
 
-### Monitoring
+### Basic Monitoring
 
 ```bash
 # Check storage usage
-df -h /mnt/ssd /mnt/hdd
+df -h /mnt/hdd
 
-# Check RAID status
+# Check RAID status (if using RAID)
 cat /proc/mdstat
 
-# Check SSD health
+# Check HDD health
 sudo smartctl -a /dev/sda
 
-# Check HDD health
-sudo smartctl -a /dev/sdb
+# Check filesystem health
+sudo fsck -n /dev/sda1
 ```
 
-### Monitoring
+### Performance Monitoring
 
 ```bash
 # Monitor I/O performance
@@ -206,141 +183,164 @@ iotop -a
 
 # Check filesystem performance
 iozone -a -g 4G
+
+# Monitor disk usage trends
+du -sh /mnt/hdd/*
 ```
 
 ### Thresholds
 
 | Storage | Warning | Critical | Action |
 |---------|---------|----------|---------|
-| **SSD Usage** | 80% (376GB) | 90% (423GB) | Archive old data |
-| **HDD Usage** | 70% (1.68TB) | 85% (2.04TB) | Expand storage |
-| **SSD IOPS** | 80% capacity | 95% capacity | Optimize queries |
+| **HDD Usage** | 70% | 85% | Clean old data or expand |
+| **HDD IOPS** | 80% capacity | 95% capacity | Optimize queries |
 | **HDD Throughput** | 80% bandwidth | 95% bandwidth | Balance load |
+| **Disk Health** | SMART warnings | SMART errors | Replace drive |
 
 ## Storage Maintenance
 
-### Tasks
+### Daily Tasks
 
 ```bash
 # Check storage health
-sudo smartctl -H /dev/sda /dev/sdb /dev/sdc /dev/sdd
+sudo smartctl -H /dev/sda
 
-# Monitor RAID status
+# Monitor RAID status (if using RAID)
 cat /proc/mdstat
 
 # Check filesystem errors
 dmesg | grep -i error
+
+# Check disk usage
+df -h /mnt/hdd
 ```
 
-### Tasks
+### Weekly Tasks
 
 ```bash
 # Run filesystem check (when unmounted)
-sudo fsck -f /dev/md0
-sudo fsck -f /dev/md1
+sudo fsck -f /dev/sda1
 
 # Defragment if needed (ext4)
-sudo e4defrag /mnt/ssd
 sudo e4defrag /mnt/hdd
 
 # Update SMART data
 sudo smartctl -t short /dev/sda
+
+# Clean temporary files
+sudo find /mnt/hdd -name "*.tmp" -mtime +7 -delete
 ```
 
-### Tasks
+### Monthly Tasks
 
 ```bash
 # Full SMART test
-sudo smartctl -t long /dev/sda /dev/sdb /dev/sdc /dev/sdd
+sudo smartctl -t long /dev/sda
 
-# RAID consistency check
-echo check | sudo tee /sys/block/md1/md/sync_action
+# RAID consistency check (if using RAID)
+echo check | sudo tee /sys/block/md0/md/sync_action
 
 # Storage performance benchmark
-sudo fio --name=monthly-test --filename=/mnt/ssd/test --size=10G \
-  --rw=randwrite --bs=4k --numjobs=4 --time_based --runtime=300
+sudo fio --name=monthly-test --filename=/mnt/hdd/test --size=10G \
+  --rw=randwrite --bs=4k --numjobs=2 --time_based --runtime=300
 ```
 
 ## Troubleshooting
 
-### Issues
+### Common Issues
 
 #### Performance Degradation
 
 ```bash
-# Check SSD wear level
-sudo smartctl -A /dev/sda | grep Wear_Leveling_Count
-
-# Enable TRIM if disabled
-sudo fstrim -v /mnt/ssd
+# Check HDD health
+sudo smartctl -A /dev/sda
 
 # Check for bad blocks
 sudo badblocks -v /dev/sda
+
+# Monitor I/O wait
+iostat -x 1
+
+# Check filesystem fragmentation
+sudo e2fsck -fn /dev/sda1
 ```
 
-#### RAID Issues
+#### RAID Issues (if using RAID)
 
 ```bash
 # Check RAID health
-sudo mdadm --detail /dev/md1
+sudo mdadm --detail /dev/md0
 
 # Rebuild failed drive
-sudo mdadm --manage /dev/md1 --add /dev/sdf
+sudo mdadm --manage /dev/md0 --add /dev/sdc
 
 # Monitor rebuild progress
 watch cat /proc/mdstat
 ```
 
-#### Full Issues
+#### Disk Full Issues
 
 ```bash
 # Find large files
-sudo find /mnt/ssd -type f -size +100M -exec ls -lh {} \;
+sudo find /mnt/hdd -type f -size +100M -exec ls -lh {} \;
 
 # Clean temporary files
-sudo find /mnt/ssd -name "*.tmp" -delete
+sudo find /mnt/hdd -name "*.tmp" -delete
 
 # Compress old logs
-sudo find /mnt/ssd/logs -name "*.log" -mtime +7 -exec gzip {} \;
+sudo find /mnt/hdd/logs -name "*.log" -mtime +7 -exec gzip {} \;
+
+# Check TimescaleDB compression
+docker exec prs-onprem-postgres-timescale \
+  psql -U $POSTGRES_USER -d $POSTGRES_DB \
+  -c "SELECT * FROM timescaledb_information.compression_settings;"
 ```
 
 ## Capacity Planning
 
 ### Projections
 
-| Time Period | SSD Usage | HDD Usage | Action Required |
-|-------------|-----------|-----------|-----------------|
-| **Current** | 60% (282GB) | 15% (360GB) | Monitor |
-| **6 Months** | 75% (352GB) | 25% (600GB) | Plan SSD expansion |
-| **1 Year** | 85% (399GB) | 40% (960GB) | Expand SSD |
-| **2 Years** | 95% (446GB) | 60% (1.44TB) | Add SSD tier |
+| Time Period | HDD Usage | Action Required |
+|-------------|-----------|-----------------|
+| **Current** | 15% (300GB) | Monitor |
+| **6 Months** | 30% (600GB) | Monitor growth |
+| **1 Year** | 50% (1TB) | Plan expansion |
+| **2 Years** | 70% (1.4TB) | Expand storage |
 
-### Options
+### Expansion Options
 
-#### Expansion
+#### Single Drive Expansion
 
 ```bash
-# Option 1: Add SSD to existing RAID1
-sudo mdadm --grow /dev/md0 --raid-devices=4 --add /dev/sdf /dev/sdg
+# Option 1: Replace with larger drive
+# 1. Backup all data
+# 2. Replace drive with larger capacity
+# 3. Restore data
 
-# Option 2: Create new SSD tier
-sudo mdadm --create /dev/md2 --level=1 --raid-devices=2 /dev/sdf /dev/sdg
+# Option 2: Add second drive for RAID1
+sudo mdadm --create /dev/md0 --level=1 --raid-devices=2 /dev/sda /dev/sdb
 ```
 
-#### Expansion
+#### RAID Expansion
 
 ```bash
-# Add drives to RAID5 array
-sudo mdadm --grow /dev/md1 --raid-devices=6 --add /dev/sdf /dev/sdg
+# Add drives to existing RAID1 array
+sudo mdadm --grow /dev/md0 --raid-devices=4 --add /dev/sdc /dev/sdd
 
 # Monitor reshape progress
 watch cat /proc/mdstat
+
+# Resize filesystem after RAID expansion
+sudo resize2fs /dev/md0
 ```
 
 ---
 
-!!! tip "Automatic Management"
-    The storage system is designed to be largely self-managing. TimescaleDB automatically handles data movement between tiers based on age and access patterns.
+!!! tip "Simplified Management"
+    The HDD-only storage system is designed for simplicity. TimescaleDB compression provides space savings without the complexity of multi-tier storage.
 
 !!! warning "Backup Critical"
     Always maintain current backups before performing any storage maintenance operations.
+
+!!! info "Performance Expectations"
+    HDD storage provides adequate performance for most business workloads. Consider SSD upgrade only if experiencing performance issues.

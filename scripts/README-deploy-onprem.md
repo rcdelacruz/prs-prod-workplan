@@ -95,7 +95,7 @@ The restore process:
 
 - Ubuntu 24.04 LTS (recommended)
 - 16GB RAM minimum
-- SSD mount at `/mnt/ssd`
+- HDD mount at `/mnt/hdd` (simplified configuration)
 - HDD mount at `/mnt/hdd`
 - Docker and Docker Compose
 - Git access to repositories
@@ -120,6 +120,6 @@ The restore process:
 - Verify environment file configuration
 
 ### Storage Issues
-- Check SSD/HDD mount points: `df -h /mnt/ssd /mnt/hdd`
-- Verify permissions: `ls -la /mnt/ssd /mnt/hdd`
+- Check HDD mount point: `df -h /mnt/hdd`
+- Verify permissions: `ls -la /mnt/hdd`
 - Ensure sufficient disk space for backups

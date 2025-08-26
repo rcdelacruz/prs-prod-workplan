@@ -96,7 +96,7 @@ storage_maintenance() {
     log_message "Starting storage maintenance"
     
     # Check storage usage
-    local ssd_usage=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+    local ssd_usage=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
     local hdd_usage=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
     
     log_message "Storage usage - SSD: ${ssd_usage}%, HDD: ${hdd_usage}%"
@@ -105,10 +105,10 @@ storage_maintenance() {
     if [ "$ssd_usage" -gt 85 ]; then
         log_message "High SSD usage detected, triggering data movement"
         docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-        SELECT move_chunk(chunk_name, 'hdd_cold')
+        SELECT move_chunk(chunk_name, 'pg_default')
         FROM timescaledb_information.chunks 
         WHERE range_start < NOW() - INTERVAL '14 days'
-        AND tablespace_name = 'ssd_hot'
+        AND tablespace_name = 'pg_default'
         LIMIT 5;
         "
     fi
@@ -120,18 +120,18 @@ storage_maintenance() {
     
     # Clean old application logs
     log_message "Managing application logs"
-    find /mnt/ssd/logs -name "*.log" -mtime +$LOG_RETENTION_DAYS -exec gzip {} \;
-    find /mnt/ssd/logs -name "*.log.gz" -mtime +30 -delete
+    find /mnt/hdd/logs -name "*.log" -mtime +$LOG_RETENTION_DAYS -exec gzip {} \;
+    find /mnt/hdd/logs -name "*.log.gz" -mtime +30 -delete
     
     # Docker system cleanup
     log_message "Cleaning Docker system"
     docker system prune -f --volumes
     
     # Check for large files
-    local large_files=$(find /mnt/ssd -type f -size +1G 2>/dev/null | wc -l)
+    local large_files=$(find /mnt/hdd -type f -size +1G 2>/dev/null | wc -l)
     if [ "$large_files" -gt 0 ]; then
         log_message "Found $large_files files larger than 1GB"
-        find /mnt/ssd -type f -size +1G -exec ls -lh {} \; >> "$LOG_FILE"
+        find /mnt/hdd -type f -size +1G -exec ls -lh {} \; >> "$LOG_FILE"
     fi
 }
 
@@ -310,7 +310,7 @@ SYSTEM STATUS
 -------------
 - CPU Usage: $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//')%
 - Memory Usage: $(free | grep Mem | awk '{printf "%.1f", $3/$2 * 100.0}')%
-- SSD Usage: $(df /mnt/ssd | awk 'NR==2 {print $5}')
+- HDD Usage: $(df /mnt/hdd | awk 'NR==2 {print $5}')
 - HDD Usage: $(df /mnt/hdd | awk 'NR==2 {print $5}')
 - Load Average: $(uptime | awk -F'load average:' '{print $2}')
 
@@ -332,7 +332,7 @@ $(tail -50 "$LOG_FILE" | grep "$(date +%Y-%m-%d)")
 
 RECOMMENDATIONS
 ---------------
-$(if [ "$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')" -gt 80 ]; then echo "- Monitor SSD usage closely"; fi)
+$(if [ "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')" -gt 80 ]; then echo "- Monitor SSD usage closely"; fi)
 $(if [ "$(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "SELECT count(*) FROM pg_stat_statements WHERE mean_time > 1000 AND calls > 10;" | xargs)" -gt 5 ]; then echo "- Review slow queries"; fi)
 $(if [ "$(grep "Failed password" /var/log/auth.log | grep "$(date +%Y-%m-%d)" | wc -l)" -gt 20 ]; then echo "- Investigate failed login attempts"; fi)
 EOF
@@ -459,7 +459,7 @@ system_optimization() {
     # Check disk fragmentation (if ext4)
     if mount | grep -q "ext4"; then
         log_message "Checking filesystem fragmentation"
-        e4defrag -c /mnt/ssd > /tmp/ssd-fragmentation.log 2>&1 || true
+        e4defrag -c /mnt/hdd > /tmp/ssd-fragmentation.log 2>&1 || true
         e4defrag -c /mnt/hdd > /tmp/hdd-fragmentation.log 2>&1 || true
     fi
 }
@@ -560,7 +560,7 @@ SYSTEM HEALTH
 --------------
 - Database Size: $(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "SELECT pg_size_pretty(pg_database_size('prs_production'));" | xargs)
 - Compression Ratio: $(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "SELECT round(AVG((before_compression_total_bytes::numeric - after_compression_total_bytes::numeric) / before_compression_total_bytes::numeric * 100), 2) FROM timescaledb_information.compressed_hypertable_stats;" | xargs)%
-- SSD Usage: $(df /mnt/ssd | awk 'NR==2 {print $5}')
+- HDD Usage: $(df /mnt/hdd | awk 'NR==2 {print $5}')
 - HDD Usage: $(df /mnt/hdd | awk 'NR==2 {print $5}')
 
 PERFORMANCE METRICS
@@ -573,7 +573,7 @@ $(if [ -f /tmp/security-updates-week$WEEK_NUMBER.txt ]; then echo "Security upda
 
 RECOMMENDATIONS
 ---------------
-$(if [ "$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')" -gt 80 ]; then echo "- Consider SSD capacity expansion"; fi)
+$(if [ "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')" -gt 80 ]; then echo "- Consider SSD capacity expansion"; fi)
 $(if [ "$(apt list --upgradable 2>/dev/null | grep security | wc -l)" -gt 0 ]; then echo "- Apply available security updates"; fi)
 $(if [ "$(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "SELECT count(*) FROM pg_stat_user_indexes WHERE idx_scan = 0 AND pg_relation_size(indexrelid) > 1024*1024;" | xargs)" -gt 3 ]; then echo "- Review and remove unused indexes"; fi)
 EOF
@@ -660,7 +660,7 @@ check_maintenance_status() {
     echo "----------------------"
     echo "CPU: $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//')%"
     echo "Memory: $(free | grep Mem | awk '{printf "%.1f", $3/$2 * 100.0}')%"
-    echo "SSD: $(df /mnt/ssd | awk 'NR==2 {print $5}')"
+    echo "SSD: $(df /mnt/hdd | awk 'NR==2 {print $5}')"
     echo "HDD: $(df /mnt/hdd | awk 'NR==2 {print $5}')"
     
     # Save status
@@ -672,7 +672,7 @@ check_maintenance_status() {
     "error_count": "$(grep -c "ERROR\|WARNING" "$LOG_FILE" | tail -100 || echo "0")",
     "cpu_usage": "$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//')",
     "memory_usage": "$(free | grep Mem | awk '{printf "%.1f", $3/$2 * 100.0}')",
-    "ssd_usage": "$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')",
+    "ssd_usage": "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')",
     "hdd_usage": "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')"
 }
 EOF

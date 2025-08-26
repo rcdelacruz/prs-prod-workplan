@@ -1,35 +1,46 @@
 #!/bin/bash
 # PRS Production Server - Storage Setup Script
-# Creates optimized directory structure for SSD/HDD dual storage
+# Creates optimized directory structure for HDD-only storage (simplified configuration)
 
 set -e
 
-echo "Setting up PRS production storage directories..."
+# Load environment for storage path
+if [ -f ".env" ]; then
+    source .env
+fi
 
-# Create SSD storage directories (performance-critical data)
-sudo mkdir -p /mnt/ssd/{postgresql-data,postgresql-hot,redis-data,redis-persistence,nginx-cache,uploads,logs,prometheus-data,grafana-data,portainer-data}
+HDD_PATH="${STORAGE_HDD_PATH:-/mnt/hdd}"
 
-# Create HDD storage directories (archival and backup data)
-sudo mkdir -p /mnt/hdd/{app-logs-archive,worker-logs-archive,postgresql-cold,postgres-wal-archive,postgres-backups,redis-backups,prometheus-archive}
+echo "Setting up PRS production storage directories (HDD-only configuration)..."
+echo "Using HDD path: $HDD_PATH"
+
+# Create HDD storage directories (all data on HDD for simplicity)
+sudo mkdir -p "$HDD_PATH"/{postgresql-data,postgres-wal-archive,postgres-backups,redis-data,redis-backups,nginx-cache,uploads,logs,app-logs-archive,worker-logs-archive,prometheus-data,prometheus-archive,grafana-data,portainer-data,backups,archives}
 
 # Set appropriate ownership and permissions
-sudo chown -R 999:999 /mnt/ssd/postgresql-data /mnt/ssd/postgresql-hot
-sudo chown -R 999:999 /mnt/hdd/postgresql-cold /mnt/hdd/postgres-wal-archive /mnt/hdd/postgres-backups
-sudo chown -R 999:999 /mnt/ssd/redis-data /mnt/ssd/redis-persistence /mnt/hdd/redis-backups
-sudo chown -R 472:472 /mnt/ssd/grafana-data
-sudo chown -R 65534:65534 /mnt/ssd/prometheus-data /mnt/hdd/prometheus-archive
-sudo chown -R www-data:www-data /mnt/ssd/nginx-cache /mnt/ssd/uploads
-sudo chown -R 1000:1000 /mnt/ssd/logs /mnt/hdd/app-logs-archive /mnt/hdd/worker-logs-archive
-sudo chown -R root:root /mnt/ssd/portainer-data
+sudo chown -R 999:999 "$HDD_PATH"/postgresql-data "$HDD_PATH"/postgres-wal-archive "$HDD_PATH"/postgres-backups
+sudo chown -R 999:999 "$HDD_PATH"/redis-data "$HDD_PATH"/redis-backups
+sudo chown -R 472:472 "$HDD_PATH"/grafana-data
+sudo chown -R 65534:65534 "$HDD_PATH"/prometheus-data "$HDD_PATH"/prometheus-archive
+sudo chown -R www-data:www-data "$HDD_PATH"/nginx-cache "$HDD_PATH"/uploads
+sudo chown -R 1000:1000 "$HDD_PATH"/logs "$HDD_PATH"/app-logs-archive "$HDD_PATH"/worker-logs-archive
+sudo chown -R root:root "$HDD_PATH"/portainer-data "$HDD_PATH"/backups "$HDD_PATH"/archives
 
 # Set appropriate permissions
-sudo chmod 700 /mnt/ssd/postgresql-data /mnt/ssd/postgresql-hot /mnt/hdd/postgresql-cold
-sudo chmod 755 /mnt/ssd/redis-data /mnt/ssd/redis-persistence /mnt/hdd/redis-backups
-sudo chmod 755 /mnt/ssd/nginx-cache /mnt/ssd/uploads /mnt/ssd/logs
-sudo chmod 755 /mnt/hdd/app-logs-archive /mnt/hdd/worker-logs-archive
-sudo chmod 755 /mnt/ssd/prometheus-data /mnt/hdd/prometheus-archive
-sudo chmod 755 /mnt/ssd/grafana-data /mnt/ssd/portainer-data
+sudo chmod 700 "$HDD_PATH"/postgresql-data
+sudo chmod 755 "$HDD_PATH"/redis-data "$HDD_PATH"/redis-backups
+sudo chmod 755 "$HDD_PATH"/nginx-cache "$HDD_PATH"/uploads "$HDD_PATH"/logs
+sudo chmod 755 "$HDD_PATH"/app-logs-archive "$HDD_PATH"/worker-logs-archive
+sudo chmod 755 "$HDD_PATH"/prometheus-data "$HDD_PATH"/prometheus-archive
+sudo chmod 755 "$HDD_PATH"/grafana-data "$HDD_PATH"/portainer-data
+sudo chmod 755 "$HDD_PATH"/postgres-wal-archive "$HDD_PATH"/postgres-backups
+sudo chmod 755 "$HDD_PATH"/backups "$HDD_PATH"/archives
 
 echo "Storage directory structure created successfully!"
-echo "SSD directories: /mnt/ssd/"
-echo "HDD directories: /mnt/hdd/"
+echo "HDD directories: $HDD_PATH/"
+echo ""
+echo "Benefits of HDD-only configuration:"
+echo "- Simplified management (single storage tier)"
+echo "- Lower cost per GB"
+echo "- Easy expansion"
+echo "- Adequate performance for most workloads"

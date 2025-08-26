@@ -2,7 +2,8 @@
 
 # PRS On-Premises Production Deployment Script
 # Adapted from EC2 deploy-ec2.sh for on-premises infrastructure
-# Optimized for 16GB RAM, 100 concurrent users, dual storage (SSD/HDD)
+# Optimized for 16GB RAM, 100 concurrent users
+# Container apps run on SSD (OS), data storage on HDD for cost efficiency
 
 set -e
 
@@ -189,10 +190,29 @@ check_system_state() {
     fi
 
     echo "Storage Status:"
-    if [ -d "/mnt/ssd" ] && [ -d "/mnt/hdd" ]; then
-        echo "  ✓ Storage mounts available"
+    # Load environment for storage paths
+    load_environment >/dev/null 2>&1 || true
+    local HDD_MOUNT="${STORAGE_HDD_PATH:-/mnt/hdd}"
+    local NAS_MOUNT="${NAS_BACKUP_PATH:-/mnt/nas}"
+
+    local storage_ok=true
+    if [ -d "$HDD_MOUNT" ]; then
+        echo "  ✓ HDD mount available at $HDD_MOUNT"
     else
-        echo "  ✗ Storage mounts not available"
+        echo "  ✗ HDD mount not available at $HDD_MOUNT"
+        storage_ok=false
+    fi
+
+    if [ -d "$NAS_MOUNT" ]; then
+        echo "  ✓ NAS mount available at $NAS_MOUNT"
+    else
+        echo "  ⚠ NAS mount not available at $NAS_MOUNT (optional)"
+    fi
+
+    if [ "$storage_ok" = true ]; then
+        echo "  ✓ Required storage mounts available"
+    else
+        echo "  ✗ Required storage mounts not available"
     fi
 }
 
@@ -239,9 +259,14 @@ validate_environment() {
         log_info "Please create the environment file for $DEPLOY_ENV environment"
 
         # Suggest creating from template
-        local template_file="$PROJECT_DIR/02-docker-configuration/.env.example"
+        local template_file="$PROJECT_DIR/02-docker-configuration/.env.hdd-only.example"
         if [ -f "$template_file" ]; then
-            log_info "You can copy from template: cp $template_file $ENV_FILE"
+            log_info "You can copy from HDD-only template: cp $template_file $ENV_FILE"
+        else
+            local fallback_template="$PROJECT_DIR/02-docker-configuration/.env.example"
+            if [ -f "$fallback_template" ]; then
+                log_info "You can copy from template: cp $fallback_template $ENV_FILE"
+            fi
         fi
         exit 1
     fi
@@ -342,15 +367,20 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Check storage mounts
-    if [ ! -d "/mnt/ssd" ]; then
-        log_error "SSD mount point /mnt/ssd not found"
+    # Check storage mounts using environment variables
+    load_environment
+    local HDD_MOUNT="${STORAGE_HDD_PATH:-/mnt/hdd}"
+    local NAS_MOUNT="${NAS_BACKUP_PATH:-/mnt/nas}"
+
+    if [ ! -d "$HDD_MOUNT" ]; then
+        log_error "HDD mount point $HDD_MOUNT not found"
+        log_info "Please ensure HDD storage is mounted at $HDD_MOUNT"
         exit 1
     fi
 
-    if [ ! -d "/mnt/hdd" ]; then
-        log_error "HDD mount point /mnt/hdd not found"
-        exit 1
+    # NAS mount is optional for backup functionality
+    if [ ! -d "$NAS_MOUNT" ]; then
+        log_warning "NAS mount point $NAS_MOUNT not found (optional for backups)"
     fi
 
     # Check network connectivity
@@ -530,51 +560,96 @@ install_buildx() {
 setup_storage() {
     log_info "Setting up storage directories..."
 
-    # Define directory arrays
-    local ssd_dirs=(postgresql-data postgresql-hot redis-data uploads logs nginx-cache prometheus-data grafana-data portainer-data)
-    local hdd_dirs=(postgresql-cold backups archives logs-archive postgres-wal-archive postgres-backups redis-backups app-logs-archive worker-logs-archive prometheus-archive)
+    # Load environment variables for storage paths
+    load_environment
 
-    # Create SSD directories (idempotent)
-    local ssd_created=false
-    for dir in "${ssd_dirs[@]}"; do
-        if [ ! -d "/mnt/ssd/$dir" ]; then
-            sudo mkdir -p "/mnt/ssd/$dir"
-            ssd_created=true
-        fi
-    done
+    # Get storage mount paths from environment (with defaults)
+    local HDD_MOUNT="${STORAGE_HDD_PATH:-/mnt/hdd}"
+    local NAS_MOUNT="${NAS_BACKUP_PATH:-/mnt/nas}"
 
-    if [ "$ssd_created" = true ]; then
-        log_info "Created missing SSD directories"
-    else
-        log_info "All SSD directories already exist"
-    fi
+    log_info "Using simplified HDD-only storage paths:"
+    log_info "  HDD Mount: $HDD_MOUNT"
+    log_info "  NAS Mount: $NAS_MOUNT"
+
+    # Define directory arrays for HDD-only configuration
+    # All data stored on HDD for simplicity
+    local hdd_dirs=(
+        "postgresql-data"     # Main PostgreSQL data
+        "postgres-wal-archive" # PostgreSQL WAL archives
+        "postgres-backups"   # PostgreSQL backup files
+        "redis-data"         # Redis data
+        "redis-backups"      # Redis backup files
+        "uploads"            # Application uploads
+        "logs"               # Application logs
+        "app-logs-archive"   # Application log archives
+        "worker-logs-archive" # Worker log archives
+        "nginx-cache"        # Nginx cache
+        "prometheus-data"    # Prometheus metrics
+        "prometheus-archive" # Prometheus data archives
+        "grafana-data"       # Grafana dashboards
+        "portainer-data"     # Portainer configuration
+        "backups"           # General backups
+        "archives"          # General archives
+    )
+
+    # NAS Paths (Off-site Backup) - from .env NAS_*_PATH variables
+    local nas_dirs=(
+        "prs-backups"        # PRS system backups (NAS_BACKUP_PATH)
+        "prs-archives"       # PRS system archives (NAS_ARCHIVE_PATH)
+    )
 
     # Create HDD directories (idempotent)
     local hdd_created=false
     for dir in "${hdd_dirs[@]}"; do
-        if [ ! -d "/mnt/hdd/$dir" ]; then
-            sudo mkdir -p "/mnt/hdd/$dir"
+        if [ ! -d "$HDD_MOUNT/$dir" ]; then
+            sudo mkdir -p "$HDD_MOUNT/$dir"
             hdd_created=true
         fi
     done
 
     if [ "$hdd_created" = true ]; then
-        log_info "Created missing HDD directories"
+        log_info "Created missing HDD directories in $HDD_MOUNT"
     else
-        log_info "All HDD directories already exist"
+        log_info "All HDD directories already exist in $HDD_MOUNT"
+    fi
+
+    # Create NAS directories if NAS mount exists (idempotent)
+    if [ -d "$(dirname "$NAS_MOUNT")" ]; then
+        local nas_created=false
+        for dir in "${nas_dirs[@]}"; do
+            if [ ! -d "$NAS_MOUNT/$dir" ]; then
+                sudo mkdir -p "$NAS_MOUNT/$dir"
+                nas_created=true
+            fi
+        done
+
+        if [ "$nas_created" = true ]; then
+            log_info "Created missing NAS directories in $NAS_MOUNT"
+        else
+            log_info "All NAS directories already exist in $NAS_MOUNT"
+        fi
+    else
+        log_warning "NAS mount point $NAS_MOUNT not available, skipping NAS directory creation"
     fi
 
     # Set ownership (idempotent - only change if needed)
     local ownership_changed=false
-    for mount_point in /mnt/ssd /mnt/hdd; do
-        if [ -d "$mount_point" ]; then
-            current_owner=$(stat -c '%U:%G' "$mount_point")
-            if [ "$current_owner" != "$USER:$USER" ]; then
-                sudo chown -R $USER:$USER "$mount_point"
-                ownership_changed=true
-            fi
+    if [ -d "$HDD_MOUNT" ]; then
+        current_owner=$(stat -c '%U:%G' "$HDD_MOUNT")
+        if [ "$current_owner" != "$USER:$USER" ]; then
+            sudo chown -R $USER:$USER "$HDD_MOUNT"
+            ownership_changed=true
         fi
-    done
+    fi
+
+    # Set ownership for NAS if it exists
+    if [ -d "$NAS_MOUNT" ]; then
+        current_owner=$(stat -c '%U:%G' "$NAS_MOUNT")
+        if [ "$current_owner" != "$USER:$USER" ]; then
+            sudo chown -R $USER:$USER "$NAS_MOUNT"
+            ownership_changed=true
+        fi
+    fi
 
     if [ "$ownership_changed" = true ]; then
         log_info "Updated directory ownership"
@@ -583,10 +658,14 @@ setup_storage() {
     fi
 
     # Set permissions (idempotent)
-    chmod -R 755 /mnt/ssd /mnt/hdd 2>/dev/null || true
+    chmod -R 755 "$HDD_MOUNT" 2>/dev/null || true
+    if [ -d "$NAS_MOUNT" ]; then
+        chmod -R 755 "$NAS_MOUNT" 2>/dev/null || true
+    fi
 
     log_success "Storage directories setup completed"
 }
+
 
 # Configure firewall
 configure_firewall() {
@@ -600,62 +679,116 @@ configure_firewall() {
         needs_config=true
         log_info "UFW is not active, will configure"
     else
-        # Check if our specific rules exist
+        # Check if our specific rules exist with correct UFW output format
         local required_rules=(
-            "80.*192.168.0.0/20.*ALLOW IN.*HTTP"
-            "443.*192.168.0.0/20.*ALLOW IN.*HTTPS"
-            "8080.*192.168.0.0/20.*ALLOW IN.*Adminer"
-            "3001.*192.168.0.0/20.*ALLOW IN.*Grafana"
-            "9000.*192.168.0.0/20.*ALLOW IN.*Portainer"
-            "9090.*192.168.0.0/20.*ALLOW IN.*Prometheus"
+            "80.*ALLOW.*192.168.0.0/20.*HTTP"
+            "443.*ALLOW.*192.168.0.0/20.*HTTPS"
+            "8080.*ALLOW.*192.168.0.0/20.*Adminer"
+            "3001.*ALLOW.*192.168.0.0/20.*Grafana"
+            "9000.*ALLOW.*192.168.0.0/20.*Portainer"
+            "9090.*ALLOW.*192.168.0.0/20.*Prometheus"
         )
 
         local ufw_status=$(sudo ufw status)
+        local missing_rules=()
+
         for rule in "${required_rules[@]}"; do
             if ! echo "$ufw_status" | grep -q "$rule"; then
-                needs_config=true
-                log_info "Missing firewall rule, will reconfigure"
-                break
+                missing_rules+=("$rule")
             fi
         done
 
-        if [ "$needs_config" = false ]; then
-            log_info "Firewall is already properly configured"
+        if [ ${#missing_rules[@]} -gt 0 ]; then
+            needs_config=true
+            log_info "Missing firewall rules detected: ${#missing_rules[@]} out of ${#required_rules[@]}"
+            log_info "Will reconfigure firewall to ensure all rules are present"
+        else
+            log_info "All required firewall rules are present"
             return 0
         fi
     fi
 
     # Configure firewall if needed
     if [ "$needs_config" = true ]; then
-        log_info "Configuring firewall rules..."
+        # Check if this is a fresh UFW installation or if we need to do a full reset
+        local ufw_status=$(sudo ufw status)
+        local is_fresh_install=false
 
-        # Reset and set defaults
-        sudo ufw --force reset
-        sudo ufw default deny incoming
-        sudo ufw default allow outgoing
+        if ! echo "$ufw_status" | grep -q "Status: active"; then
+            is_fresh_install=true
+            log_info "UFW is not active, performing initial configuration..."
+        else
+            log_info "UFW is active, adding missing rules without reset..."
+        fi
 
-        # Allow internal network access to services
-        sudo ufw allow from 192.168.0.0/20 to any port 80 comment "HTTP"
-        sudo ufw allow from 192.168.0.0/20 to any port 443 comment "HTTPS"
-        sudo ufw allow from 192.168.0.0/20 to any port 8080 comment "Adminer"
-        sudo ufw allow from 192.168.0.0/20 to any port 3001 comment "Grafana"
-        sudo ufw allow from 192.168.0.0/20 to any port 9000 comment "Portainer"
-        sudo ufw allow from 192.168.0.0/20 to any port 9090 comment "Prometheus"
+        # Only do full reset for fresh installations
+        if [ "$is_fresh_install" = true ]; then
+            log_info "Performing initial firewall setup..."
+            sudo ufw --force reset
+            sudo ufw default deny incoming
+            sudo ufw default allow outgoing
 
-        # Allow SSH from IT network only
-        # sudo ufw allow from 192.168.1.0/24 to any port 22 comment "SSH IT"
+            # Enable firewall first
+            sudo ufw --force enable
+        fi
 
-        # Rate limiting for HTTP/HTTPS
-        sudo ufw limit 80/tcp
-        sudo ufw limit 443/tcp
+        # Add rules individually (idempotent - UFW won't duplicate existing rules)
+        log_info "Ensuring required firewall rules are present..."
 
-        # Enable firewall
-        sudo ufw --force enable
+        # Check and add each rule individually
+        if ! echo "$ufw_status" | grep -q "80.*ALLOW.*192.168.0.0/20.*HTTP"; then
+            log_info "Adding HTTP rule..."
+            sudo ufw allow from 192.168.0.0/20 to any port 80 comment "HTTP"
+        fi
 
-        # Enable SSH
-        sudo ufw allow ssh
+        if ! echo "$ufw_status" | grep -q "443.*ALLOW.*192.168.0.0/20.*HTTPS"; then
+            log_info "Adding HTTPS rule..."
+            sudo ufw allow from 192.168.0.0/20 to any port 443 comment "HTTPS"
+        fi
 
-        log_success "Firewall configured"
+        if ! echo "$ufw_status" | grep -q "8080.*ALLOW.*192.168.0.0/20.*Adminer"; then
+            log_info "Adding Adminer rule..."
+            sudo ufw allow from 192.168.0.0/20 to any port 8080 comment "Adminer"
+        fi
+
+        if ! echo "$ufw_status" | grep -q "3001.*ALLOW.*192.168.0.0/20.*Grafana"; then
+            log_info "Adding Grafana rule..."
+            sudo ufw allow from 192.168.0.0/20 to any port 3001 comment "Grafana"
+        fi
+
+        if ! echo "$ufw_status" | grep -q "9000.*ALLOW.*192.168.0.0/20.*Portainer"; then
+            log_info "Adding Portainer rule..."
+            sudo ufw allow from 192.168.0.0/20 to any port 9000 comment "Portainer"
+        fi
+
+        if ! echo "$ufw_status" | grep -q "9090.*ALLOW.*192.168.0.0/20.*Prometheus"; then
+            log_info "Adding Prometheus rule..."
+            sudo ufw allow from 192.168.0.0/20 to any port 9090 comment "Prometheus"
+        fi
+
+        # Add rate limiting rules if not present (only for fresh installs or if missing)
+        if [ "$is_fresh_install" = true ] || ! echo "$ufw_status" | grep -q "80/tcp.*LIMIT"; then
+            log_info "Adding HTTP rate limiting..."
+            sudo ufw limit 80/tcp
+        fi
+
+        if [ "$is_fresh_install" = true ] || ! echo "$ufw_status" | grep -q "443/tcp.*LIMIT"; then
+            log_info "Adding HTTPS rate limiting..."
+            sudo ufw limit 443/tcp
+        fi
+
+        # Ensure SSH is allowed (idempotent)
+        if [ "$is_fresh_install" = true ] || ! echo "$ufw_status" | grep -q "22/tcp.*ALLOW"; then
+            log_info "Ensuring SSH access..."
+            sudo ufw allow ssh
+        fi
+
+        # Ensure UFW is enabled
+        if ! sudo ufw status | grep -q "Status: active"; then
+            sudo ufw --force enable
+        fi
+
+        log_success "Firewall configuration completed"
     fi
 }
 
@@ -818,9 +951,10 @@ reset_database() {
     # Remove database volume
     docker volume rm 02-docker-configuration_database_data 2>/dev/null || true
 
-    # Clean any potential data directories
-    sudo rm -rf /mnt/ssd/postgresql-hot/* 2>/dev/null || true
-    sudo rm -rf /mnt/hdd/postgresql-cold/* 2>/dev/null || true
+    # Clean any potential data directories using environment paths
+    local HDD_MOUNT="${STORAGE_HDD_PATH:-/mnt/hdd}"
+
+    sudo rm -rf "$HDD_MOUNT/postgresql-data"/* 2>/dev/null || true
 
     # Start database container fresh
     docker compose -f docker-compose.onprem.yml up -d postgres
@@ -837,7 +971,8 @@ ensure_database_initialized() {
     docker compose -f docker-compose.onprem.yml down postgres 2>/dev/null || true
 
     # Clear any existing PostgreSQL data to force fresh initialization
-    sudo rm -rf /mnt/ssd/postgresql-data/* 2>/dev/null || true
+    local HDD_MOUNT="${STORAGE_HDD_PATH:-/mnt/hdd}"
+    sudo rm -rf "$HDD_MOUNT/postgresql-data"/* 2>/dev/null || true
 
     # Remove Docker volume
     docker volume rm 02-docker-configuration_database_data 2>/dev/null || true
@@ -880,7 +1015,7 @@ fix_docker_permissions() {
 load_environment() {
     if [ ! -f "$ENV_FILE" ]; then
         log_error "Environment file not found: $ENV_FILE"
-        log_info "Please copy .env.onprem.example to .env and configure it"
+        log_info "Please copy .env.hdd-only.example to .env and configure it"
         exit 1
     fi
 
@@ -1454,7 +1589,12 @@ build_frontend_image() {
 
 # Start services
 start_services() {
+    local force_restart="${1:-false}"
     log_info "Starting services for $DEPLOY_ENV environment..."
+
+    if [ "$force_restart" = "true" ]; then
+        log_info "Force restart mode enabled - will restart all services"
+    fi
 
     cd "$PROJECT_DIR/02-docker-configuration"
 
@@ -1462,14 +1602,41 @@ start_services() {
     local compose_file_name=$(basename "$COMPOSE_FILE")
     local running_services=$(docker compose -f "$compose_file_name" ps --services --filter "status=running" 2>/dev/null || true)
 
+    # If force restart is enabled, stop all services first
+    if [ "$force_restart" = "true" ] && [ -n "$running_services" ]; then
+        log_info "Stopping all services for clean restart..."
+        docker compose -f "$compose_file_name" down
+        sleep 5
+        running_services=""  # Reset since we stopped everything
+    fi
+
     # Start infrastructure services first
     if ! echo "$running_services" | grep -q "postgres\|redis"; then
         log_info "Starting database and cache services..."
         docker compose -f "$compose_file_name" up -d postgres redis
 
-        # Wait for database to be ready
+        # Wait for database to be ready with proper health check
         log_info "Waiting for database to be ready..."
-        sleep 30
+        local db_ready=false
+        local wait_time=0
+        local max_wait=120
+
+        while [ $wait_time -lt $max_wait ]; do
+            if docker exec prs-onprem-postgres-timescale pg_isready -U prs_user >/dev/null 2>&1; then
+                log_success "Database is ready"
+                db_ready=true
+                break
+            fi
+            sleep 5
+            wait_time=$((wait_time + 5))
+            if [ $((wait_time % 30)) -eq 0 ]; then
+                log_info "Still waiting for database... (${wait_time}s elapsed)"
+            fi
+        done
+
+        if [ "$db_ready" = false ]; then
+            log_warning "Database did not become ready within ${max_wait} seconds, but continuing..."
+        fi
     else
         log_info "Database and cache services are already running"
     fi
@@ -1480,7 +1647,24 @@ start_services() {
         docker compose -f "$compose_file_name" up -d backend redis-worker
 
         # Wait for backend to be ready
-        sleep 30
+        log_info "Waiting for backend service to be ready..."
+        sleep 15  # Give backend time to start
+
+        # Check if backend container is running
+        local backend_wait=0
+        local max_backend_wait=60
+        while [ $backend_wait -lt $max_backend_wait ]; do
+            if docker ps | grep -q "prs-onprem-backend"; then
+                log_success "Backend service is running"
+                break
+            fi
+            sleep 2
+            backend_wait=$((backend_wait + 2))
+        done
+
+        if [ $backend_wait -ge $max_backend_wait ]; then
+            log_warning "Backend service did not start within ${max_backend_wait} seconds"
+        fi
     else
         log_info "Application services are already running"
     fi
@@ -1522,6 +1706,80 @@ start_services() {
     log_success "All services started"
 }
 
+# Wait for services to be healthy and ready
+wait_for_services_ready() {
+    log_info "Verifying services are healthy and ready..."
+
+    cd "$PROJECT_DIR/02-docker-configuration"
+    local compose_file_name=$(basename "$COMPOSE_FILE")
+
+    # Check PostgreSQL health
+    log_info "Checking PostgreSQL health..."
+
+    # First check if container is running
+    if ! docker ps | grep -q "prs-onprem-postgres-timescale"; then
+        log_error "PostgreSQL container is not running!"
+        log_info "Checking container status:"
+        docker ps -a | grep postgres || log_info "No postgres containers found"
+        log_info "Recent PostgreSQL logs:"
+        docker logs --tail 10 prs-onprem-postgres-timescale 2>/dev/null || log_info "Could not retrieve logs"
+        return 1
+    fi
+
+    local db_attempts=0
+    local max_db_attempts=30
+    while [ $db_attempts -lt $max_db_attempts ]; do
+        if docker exec prs-onprem-postgres-timescale pg_isready -U prs_user >/dev/null 2>&1; then
+            log_success "PostgreSQL is healthy"
+            break
+        fi
+        sleep 2
+        db_attempts=$((db_attempts + 1))
+        if [ $((db_attempts % 10)) -eq 0 ]; then
+            log_info "Still checking PostgreSQL health... (attempt $db_attempts/$max_db_attempts)"
+            # Show some debugging info every 10 attempts
+            if [ $db_attempts -eq 20 ]; then
+                log_info "PostgreSQL container status:"
+                docker ps | grep postgres || log_info "Container not found in running processes"
+                log_info "Recent PostgreSQL logs:"
+                docker logs --tail 5 prs-onprem-postgres-timescale 2>/dev/null || log_info "Could not retrieve logs"
+            fi
+        fi
+    done
+
+    if [ $db_attempts -eq $max_db_attempts ]; then
+        log_error "PostgreSQL failed health check after $max_db_attempts attempts"
+        log_info "Final debugging information:"
+        log_info "Container status:"
+        docker ps -a | grep postgres || log_info "No postgres containers found"
+        log_info "Recent PostgreSQL logs (last 20 lines):"
+        docker logs --tail 20 prs-onprem-postgres-timescale 2>/dev/null || log_info "Could not retrieve logs"
+        log_info "Environment variables in container:"
+        docker exec prs-onprem-postgres-timescale env | grep POSTGRES 2>/dev/null || log_info "Could not retrieve environment"
+        return 1
+    fi
+
+    # Check backend health (if it has a health endpoint)
+    log_info "Checking backend service..."
+    if docker ps | grep -q "prs-onprem-backend"; then
+        log_success "Backend container is running"
+    else
+        log_warning "Backend container is not running"
+        return 1
+    fi
+
+    # Check Redis health
+    log_info "Checking Redis health..."
+    if docker exec prs-onprem-redis redis-cli ping >/dev/null 2>&1; then
+        log_success "Redis is healthy"
+    else
+        log_warning "Redis health check failed, but continuing..."
+    fi
+
+    log_success "All critical services are healthy and ready"
+    return 0
+}
+
 # Stop services
 stop_services() {
     log_info "Stopping services for $DEPLOY_ENV environment..."
@@ -1539,21 +1797,66 @@ init_users_database() {
 
     cd "$PROJECT_DIR/02-docker-configuration"
 
-    # Check if database container is running
-    if ! docker ps | grep -q "prs-onprem-postgres-timescale"; then
-        log_error "PostgreSQL container is not running. Please start services first."
+    # Wait for containers to be running and ready with better error handling
+    log_info "Checking container status..."
+
+    # Check if database container is running with retry logic
+    local max_retries=30
+    local retry_count=0
+    while [ $retry_count -lt $max_retries ]; do
+        if docker ps | grep -q "prs-onprem-postgres-timescale"; then
+            log_info "PostgreSQL container is running"
+            break
+        else
+            if [ $retry_count -eq 0 ]; then
+                log_info "Waiting for PostgreSQL container to start..."
+            fi
+            sleep 2
+            retry_count=$((retry_count + 1))
+        fi
+    done
+
+    if [ $retry_count -eq $max_retries ]; then
+        log_error "PostgreSQL container is not running after waiting 60 seconds."
+        log_info "Checking container status:"
+        docker ps -a | grep postgres || log_info "No postgres containers found"
+        log_info "Please check if services started correctly with: $0 status"
         exit 1
     fi
 
-    # Check if backend container is running
-    if ! docker ps | grep -q "prs-onprem-backend"; then
-        log_error "Backend container is not running. Please start services first."
+    # Check if backend container is running with retry logic
+    retry_count=0
+    while [ $retry_count -lt $max_retries ]; do
+        if docker ps | grep -q "prs-onprem-backend"; then
+            log_info "Backend container is running"
+            break
+        else
+            if [ $retry_count -eq 0 ]; then
+                log_info "Waiting for backend container to start..."
+            fi
+            sleep 2
+            retry_count=$((retry_count + 1))
+        fi
+    done
+
+    if [ $retry_count -eq $max_retries ]; then
+        log_error "Backend container is not running after waiting 60 seconds."
+        log_info "Checking container status:"
+        docker ps -a | grep backend || log_info "No backend containers found"
+        log_info "Please check if services started correctly with: $0 status"
         exit 1
     fi
 
-    # Wait for database to be ready
+    # Wait for database to be ready with better error handling
     log_info "Waiting for database connection..."
-    timeout 60 bash -c 'until docker exec prs-onprem-postgres-timescale pg_isready -U prs_user >/dev/null 2>&1; do sleep 2; done'
+    if ! timeout 120 bash -c 'until docker exec prs-onprem-postgres-timescale pg_isready -U prs_user >/dev/null 2>&1; do sleep 2; done'; then
+        log_error "Database failed to become ready within 120 seconds"
+        log_info "Checking database container logs:"
+        docker logs --tail 20 prs-onprem-postgres-timescale || log_info "Could not retrieve container logs"
+        exit 1
+    fi
+
+    log_success "Database is ready for initialization"
 
     # Check if users table already exists and has data
     local user_count=$(docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='users';" 2>/dev/null | tr -d ' ' || echo "0")
@@ -1566,9 +1869,7 @@ init_users_database() {
         fi
     fi
 
-    # # Create TimescaleDB extension (idempotent)
-    # log_info "Creating TimescaleDB extension..."
-    # docker exec prs-onprem-postgres-timescale psql -U prs_user -d prs_production -c "CREATE EXTENSION IF NOT EXISTS timescaledb;" >/dev/null 2>&1
+
 
     # # Run migrations (should be idempotent)
     # log_info "Running database migrations..."
@@ -1633,14 +1934,18 @@ db_backup() {
         exit 1
     fi
 
+    # Get backup path from environment
+    local HDD_MOUNT="${HDD_MOUNT_PATH:-/mnt/hdd}"
+    local BACKUP_DIR="${HDD_BACKUP_PATH:-$HDD_MOUNT/backups}/postgres-backups"
+
     # Create backup directory if it doesn't exist (idempotent)
-    if [ ! -d /mnt/hdd/postgres-backups ]; then
-        mkdir -p /mnt/hdd/postgres-backups
-        log_info "Created backup directory"
+    if [ ! -d "$BACKUP_DIR" ]; then
+        mkdir -p "$BACKUP_DIR"
+        log_info "Created backup directory: $BACKUP_DIR"
     fi
 
     # Generate backup filename with timestamp
-    BACKUP_FILE="/mnt/hdd/postgres-backups/prs_production_$(date +%Y%m%d_%H%M%S).sql"
+    BACKUP_FILE="$BACKUP_DIR/prs_production_$(date +%Y%m%d_%H%M%S).sql"
 
     # Create backup
     log_info "Creating backup: $BACKUP_FILE"
@@ -1659,9 +1964,17 @@ db_backup() {
 # Database restore
 db_restore() {
     if [ -z "$1" ]; then
+        # Get backup path from environment
+        local HDD_MOUNT="${HDD_MOUNT_PATH:-/mnt/hdd}"
+        local BACKUP_DIR="${HDD_BACKUP_PATH:-$HDD_MOUNT/backups}/postgres-backups"
+
         log_error "Usage: $0 db-restore <backup_file>"
-        log_info "Available backups:"
-        ls -la /mnt/hdd/postgres-backups/
+        log_info "Available backups in $BACKUP_DIR:"
+        if [ -d "$BACKUP_DIR" ]; then
+            ls -la "$BACKUP_DIR/"
+        else
+            log_warning "Backup directory $BACKUP_DIR does not exist"
+        fi
         exit 1
     fi
 
@@ -1714,6 +2027,384 @@ db_restore() {
     log_success "Database restored from: $BACKUP_FILE"
 }
 
+# Setup TimescaleDB (HDD-only configuration)
+setup_timescaledb() {
+    log_info "Setting up TimescaleDB (HDD-only configuration)..."
+
+    # Load environment to get database credentials
+    load_environment
+
+    # Check if database container is running
+    if ! docker ps | grep -q "prs-onprem-postgres-timescale"; then
+        log_error "PostgreSQL container is not running. Please start services first."
+        exit 1
+    fi
+
+    # Wait for database to be ready
+    log_info "Waiting for database to be ready..."
+    if ! timeout 60 bash -c 'until docker exec prs-onprem-postgres-timescale pg_isready -U prs_user >/dev/null 2>&1; do sleep 2; done'; then
+        log_error "Database failed to become ready within 60 seconds"
+        exit 1
+    fi
+
+    # Get database credentials from environment
+    local POSTGRES_USER="${POSTGRES_USER:-prs_user}"
+    local POSTGRES_PASSWORD="${POSTGRES_PASSWORD}"
+    local POSTGRES_DB="${POSTGRES_DB:-prs_production}"
+
+    if [ -z "$POSTGRES_PASSWORD" ]; then
+        log_error "POSTGRES_PASSWORD not found in environment"
+        exit 1
+    fi
+
+    log_info "Using simplified HDD-only storage configuration"
+
+    # Check if TimescaleDB extension is available and enable it
+    log_info "Checking TimescaleDB extension..."
+    local ts_available=$(docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" prs-onprem-postgres-timescale psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -c "SELECT COUNT(*) FROM pg_available_extensions WHERE name='timescaledb';" 2>/dev/null | tr -d ' \n' | grep -o '[0-9]*' || echo "0")
+
+    # Ensure we have a valid number
+    if [ -z "$ts_available" ] || ! [[ "$ts_available" =~ ^[0-9]+$ ]]; then
+        ts_available=0
+    fi
+
+    local timescaledb_enabled=false
+
+    if [ "$ts_available" -eq 0 ]; then
+        log_warning "TimescaleDB extension not available, continuing with regular PostgreSQL"
+    else
+        log_info "TimescaleDB extension is available"
+
+        # Enable TimescaleDB extension if not already enabled
+        local ts_enabled=$(docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" prs-onprem-postgres-timescale psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -c "SELECT COUNT(*) FROM pg_extension WHERE extname='timescaledb';" 2>/dev/null | tr -d ' \n' | grep -o '[0-9]*' || echo "0")
+
+        # Ensure we have a valid number
+        if [ -z "$ts_enabled" ] || ! [[ "$ts_enabled" =~ ^[0-9]+$ ]]; then
+            ts_enabled=0
+        fi
+
+        if [ "$ts_enabled" -eq 0 ]; then
+            log_info "Enabling TimescaleDB extension..."
+            if docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" prs-onprem-postgres-timescale psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE EXTENSION IF NOT EXISTS timescaledb;" >/dev/null 2>&1; then
+                log_success "TimescaleDB extension enabled"
+                timescaledb_enabled=true
+            else
+                log_warning "Failed to enable TimescaleDB extension, continuing with regular PostgreSQL"
+            fi
+        else
+            log_info "TimescaleDB extension is already enabled"
+            timescaledb_enabled=true
+        fi
+    fi
+
+    # HDD-only configuration - no complex setup needed
+    log_info "Using default PostgreSQL storage on HDD"
+
+    # TimescaleDB setup completed - HDD-only configuration
+    if [ "$timescaledb_enabled" = true ]; then
+        log_success "TimescaleDB setup completed (HDD-only configuration)"
+    else
+        log_success "PostgreSQL setup completed (HDD-only configuration)"
+    fi
+}
+
+
+
+
+
+# Run TimescaleDB optimization (HDD-only configuration)
+optimize_timescaledb() {
+    log_info "Running TimescaleDB optimization (HDD-only configuration)..."
+
+    # Load environment to get database credentials
+    load_environment
+
+    # Check if database container is running
+    if ! docker ps | grep -q "prs-onprem-postgres-timescale"; then
+        log_error "PostgreSQL container is not running. Please start services first."
+        exit 1
+    fi
+
+    # Check if optimization scripts exist
+    local post_setup_script="/opt/prs/prs-deployment/scripts/timescaledb-post-setup-optimization.sh"
+    local auto_optimizer_script="/opt/prs/prs-deployment/scripts/timescaledb-auto-optimizer.sh"
+
+    if [ ! -f "$post_setup_script" ]; then
+        log_error "Post-setup optimization script not found: $post_setup_script"
+        exit 1
+    fi
+
+    if [ ! -f "$auto_optimizer_script" ]; then
+        log_error "Auto-optimizer script not found: $auto_optimizer_script"
+        exit 1
+    fi
+
+    # Step 1: Ensure TimescaleDB is set up (HDD-only configuration)
+    log_info "Step 1: Ensuring TimescaleDB setup is complete..."
+    setup_timescaledb
+
+    # Step 2: Run post-setup optimization (compression policies, retention policies, etc.)
+    log_info "Step 2: Running post-setup optimization..."
+    if bash "$post_setup_script"; then
+        log_success "Post-setup optimization completed"
+    else
+        log_warning "Post-setup optimization had some issues, continuing..."
+    fi
+
+    # Step 3: Run auto-optimizer (compress chunks, optimize policies)
+    log_info "Step 3: Running auto-optimizer..."
+    if bash "$auto_optimizer_script"; then
+        log_success "Auto-optimization completed"
+    else
+        log_warning "Auto-optimization had some issues, continuing..."
+    fi
+
+    # Step 6: Show final optimization summary
+    log_info "Step 6: Generating optimization summary..."
+
+    log_info "Final TimescaleDB optimization summary:"
+    docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" prs-onprem-postgres-timescale psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+        SELECT
+            'Hypertables' as metric,
+            COUNT(*)::text as value
+        FROM timescaledb_information.hypertables
+        UNION ALL
+        SELECT
+            'Total Chunks' as metric,
+            COUNT(*)::text as value
+        FROM timescaledb_information.chunks
+        UNION ALL
+        SELECT
+            'Compressed Chunks' as metric,
+            COUNT(*)::text as value
+        FROM timescaledb_information.chunks WHERE is_compressed
+        UNION ALL
+        SELECT
+            'HDD Chunks' as metric,
+            COUNT(*)::text as value
+        FROM timescaledb_information.chunks
+        UNION ALL
+        SELECT
+            'Active Compression Policies' as metric,
+            COUNT(*)::text as value
+        FROM timescaledb_information.jobs
+        WHERE application_name LIKE '%Compression%'
+        UNION ALL
+        SELECT
+            'Active Retention Policies' as metric,
+            COUNT(*)::text as value
+        FROM timescaledb_information.jobs
+        WHERE application_name LIKE '%Retention%';
+    " 2>/dev/null || log_warning "Could not generate summary"
+
+    log_success "TimescaleDB optimization completed (HDD-only configuration)!"
+
+    log_info "Production automation recommendations:"
+    echo "  1. One-time setup: ./deploy-onprem.sh optimize-timescaledb (DONE)"
+    echo "  2. Weekly maintenance: ./deploy-onprem.sh weekly-maintenance"
+    echo "  3. Monitor with: ./deploy-onprem.sh timescaledb-status"
+    echo "  4. Consider database restart for all PostgreSQL settings to take effect"
+}
+
+# Weekly maintenance for production (cron-friendly)
+weekly_maintenance() {
+    log_info "Running weekly TimescaleDB maintenance..."
+
+    # Load environment
+    load_environment
+
+    # Check if database container is running
+    if ! docker ps | grep -q "prs-onprem-postgres-timescale"; then
+        log_error "PostgreSQL container is not running. Skipping maintenance."
+        exit 1
+    fi
+
+    local POSTGRES_USER="${POSTGRES_USER:-prs_user}"
+    local POSTGRES_PASSWORD="${POSTGRES_PASSWORD}"
+    local POSTGRES_DB="${POSTGRES_DB:-prs_production}"
+
+    if [ -z "$POSTGRES_PASSWORD" ]; then
+        log_error "POSTGRES_PASSWORD not found in environment"
+        exit 1
+    fi
+
+    # HDD-only configuration - all data already optimally placed
+    log_info "HDD-only configuration - all data optimally placed on HDD"
+
+    # Run the auto-optimizer if it exists
+    local auto_optimizer_script="/opt/prs/prs-deployment/scripts/timescaledb-auto-optimizer.sh"
+    if [ -f "$auto_optimizer_script" ]; then
+        log_info "Running TimescaleDB auto-optimizer..."
+        if bash "$auto_optimizer_script" >/dev/null 2>&1; then
+            log_success "Auto-optimizer completed successfully"
+        else
+            log_warning "Auto-optimizer had some issues"
+        fi
+    else
+        log_warning "Auto-optimizer script not found, skipping"
+    fi
+
+    # Generate maintenance summary
+    log_info "Weekly maintenance summary:"
+    docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" prs-onprem-postgres-timescale psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+        SELECT
+            'Total Chunks' as metric,
+            COUNT(*)::text as value
+        FROM timescaledb_information.chunks
+        UNION ALL
+        SELECT
+            'Compressed Chunks' as metric,
+            COUNT(*)::text as value
+        FROM timescaledb_information.chunks WHERE is_compressed
+        UNION ALL
+        SELECT
+            'HDD Chunks' as metric,
+            COUNT(*)::text as value
+        FROM timescaledb_information.chunks;
+    " 2>/dev/null || log_warning "Could not generate summary"
+
+    log_success "Weekly maintenance completed!"
+}
+
+# Show TimescaleDB status (monitoring-friendly)
+timescaledb_status() {
+    log_info "TimescaleDB Status Report"
+
+    # Load environment
+    load_environment
+
+    local POSTGRES_USER="${POSTGRES_USER:-prs_user}"
+    local POSTGRES_PASSWORD="${POSTGRES_PASSWORD}"
+    local POSTGRES_DB="${POSTGRES_DB:-prs_production}"
+
+    if ! docker ps | grep -q "prs-onprem-postgres-timescale"; then
+        log_error "PostgreSQL container is not running"
+        exit 1
+    fi
+
+    echo ""
+    log_info "=== CHUNK DISTRIBUTION ==="
+    docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" prs-onprem-postgres-timescale psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+        SELECT
+            'HDD (default)' as storage,
+            CASE WHEN c.is_compressed THEN 'Compressed' ELSE 'Uncompressed' END as compression_status,
+            COUNT(*) as chunk_count,
+            ROUND(AVG(EXTRACT(EPOCH FROM (NOW() - c.range_end))/86400), 1) as avg_age_days
+        FROM timescaledb_information.chunks c
+        GROUP BY c.is_compressed
+        ORDER BY compression_status;
+    " 2>/dev/null || log_warning "Could not retrieve chunk distribution"
+
+    echo ""
+    log_info "=== ACTIVE POLICIES ==="
+    docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" prs-onprem-postgres-timescale psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+        SELECT
+            job_id,
+            application_name,
+            schedule_interval,
+            CASE WHEN scheduled THEN 'Active' ELSE 'Inactive' END as status
+        FROM timescaledb_information.jobs
+        WHERE application_name LIKE '%Compression%' OR application_name LIKE '%Retention%'
+        ORDER BY application_name;
+    " 2>/dev/null || log_warning "Could not retrieve policies"
+
+    echo ""
+    log_info "=== CHUNK STATUS ==="
+    log_success "All chunks use HDD storage (simplified configuration)"
+
+    echo ""
+}
+
+# Troubleshoot deployment issues
+troubleshoot_deployment() {
+    log_info "Running deployment troubleshooting..."
+
+    cd "$PROJECT_DIR/02-docker-configuration"
+    local compose_file_name=$(basename "$COMPOSE_FILE")
+
+    echo ""
+    log_info "=== Container Status ==="
+    docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+    echo ""
+    log_info "=== Docker Compose Services ==="
+    docker compose -f "$compose_file_name" ps
+
+    echo ""
+    log_info "=== Critical Container Health Checks ==="
+
+    # Check PostgreSQL
+    if docker ps | grep -q "prs-onprem-postgres-timescale"; then
+        echo "✓ PostgreSQL container is running"
+        if docker exec prs-onprem-postgres-timescale pg_isready -U prs_user >/dev/null 2>&1; then
+            echo "✓ PostgreSQL is accepting connections"
+        else
+            echo "✗ PostgreSQL is not accepting connections"
+            echo "PostgreSQL logs (last 10 lines):"
+            docker logs --tail 10 prs-onprem-postgres-timescale
+        fi
+    else
+        echo "✗ PostgreSQL container is not running"
+        echo "Checking for any postgres containers:"
+        docker ps -a | grep postgres || echo "No postgres containers found"
+    fi
+
+    # Check Backend
+    if docker ps | grep -q "prs-onprem-backend"; then
+        echo "✓ Backend container is running"
+    else
+        echo "✗ Backend container is not running"
+        echo "Checking for any backend containers:"
+        docker ps -a | grep backend || echo "No backend containers found"
+        echo "Backend logs (last 10 lines):"
+        docker logs --tail 10 prs-onprem-backend 2>/dev/null || echo "Could not retrieve backend logs"
+    fi
+
+    # Check Redis
+    if docker ps | grep -q "prs-onprem-redis"; then
+        echo "✓ Redis container is running"
+        if docker exec prs-onprem-redis redis-cli ping >/dev/null 2>&1; then
+            echo "✓ Redis is responding to ping"
+        else
+            echo "✗ Redis is not responding to ping"
+        fi
+    else
+        echo "✗ Redis container is not running"
+    fi
+
+    echo ""
+    log_info "=== System Resources ==="
+    echo "Memory usage:"
+    free -h
+    echo ""
+    echo "Disk usage:"
+    df -h | grep -E "(Filesystem|/mnt|/$)"
+
+    echo ""
+    log_info "=== Environment Configuration ==="
+    if [ -f "$ENV_FILE" ]; then
+        echo "Environment file: $ENV_FILE ✓"
+        echo "Compose file: $COMPOSE_FILE ✓"
+    else
+        echo "Environment file: $ENV_FILE ✗"
+    fi
+
+    echo ""
+    log_info "=== Recent Container Logs ==="
+    echo "PostgreSQL logs (last 5 lines):"
+    docker logs --tail 5 prs-onprem-postgres-timescale 2>/dev/null || echo "Could not retrieve PostgreSQL logs"
+    echo ""
+    echo "Backend logs (last 5 lines):"
+    docker logs --tail 5 prs-onprem-backend 2>/dev/null || echo "Could not retrieve backend logs"
+
+    echo ""
+    log_info "=== Troubleshooting Complete ==="
+    log_info "If issues persist, check the full logs with:"
+    echo "  docker logs prs-onprem-postgres-timescale"
+    echo "  docker logs prs-onprem-backend"
+    echo "  docker logs prs-onprem-redis"
+}
+
 # Show service status
 show_status() {
     log_info "Service Status for $DEPLOY_ENV environment:"
@@ -1724,8 +2415,20 @@ show_status() {
     echo ""
     log_info "System Resources:"
     echo "Memory: $(free -h | grep Mem | awk '{print $3"/"$2}')"
-    echo "SSD Usage: $(df -h /mnt/ssd | awk 'NR==2 {print $5}')"
-    echo "HDD Usage: $(df -h /mnt/hdd | awk 'NR==2 {print $5}')"
+
+    # Get storage paths from environment (HDD-only configuration)
+    local HDD_MOUNT="${STORAGE_HDD_PATH:-/mnt/hdd}"
+    local NAS_MOUNT="${NAS_BACKUP_PATH:-/mnt/nas}"
+
+    if [ -d "$HDD_MOUNT" ]; then
+        echo "HDD Usage ($HDD_MOUNT): $(df -h "$HDD_MOUNT" | awk 'NR==2 {print $5}')"
+    else
+        echo "HDD Usage: Mount not available at $HDD_MOUNT"
+    fi
+
+    if [ -d "$NAS_MOUNT" ]; then
+        echo "NAS Usage ($NAS_MOUNT): $(df -h "$NAS_MOUNT" | awk 'NR==2 {print $5}')"
+    fi
 
     echo ""
     log_info "Service URLs for $DEPLOY_ENV environment:"
@@ -1756,7 +2459,7 @@ show_status() {
 show_usage() {
     echo "PRS On-Premises Production Deployment Script (Idempotent)"
     echo "Adapted from EC2 setup for on-premises infrastructure"
-    echo "Optimized for 16GB RAM, 100 concurrent users, dual storage"
+    echo "Optimized for 16GB RAM, 100 concurrent users, HDD-only storage"
     echo ""
     echo "This script is designed to be idempotent - it can be run multiple times safely."
     echo "It will skip steps that have already been completed and only perform necessary changes."
@@ -1770,6 +2473,8 @@ show_usage() {
     echo ""
     echo "Deployment Commands:"
     echo "  deploy              Full deployment (install, build, start, init) - idempotent"
+    echo "  redeploy            Force redeployment with minimal downtime (preserves data)"
+    echo "  reset-deploy        Force redeployment with database reset (DESTRUCTIVE - deletes data)"
     echo "  setup               Setup system (dependencies, storage, firewall) - idempotent"
     echo "  install-buildx      Install/fix Docker buildx plugin - idempotent"
     echo "  build               Build Docker images - idempotent (use FORCE_REBUILD=true to force)"
@@ -1778,6 +2483,7 @@ show_usage() {
     echo "  start               Start services - idempotent"
     echo "  stop                Stop services"
     echo "  restart             Restart services"
+    echo "  wait-ready          Wait for services to be healthy and ready"
     echo "  status              Show service status and resource usage"
     echo "  check-state         Check overall system state"
     echo ""
@@ -1790,10 +2496,16 @@ show_usage() {
     echo ""
     echo "Other Commands:"
     echo "  ssl-setup           Setup SSL certificates - idempotent"
+    echo "  firewall-setup      Configure firewall rules - idempotent"
+    echo "  timescaledb-setup   Setup TimescaleDB (HDD-only configuration) - idempotent"
+    echo "  optimize-timescaledb Complete TimescaleDB optimization (HDD-only configuration)"
+    echo "  weekly-maintenance  Automated weekly TimescaleDB maintenance (cron-friendly)"
+    echo "  timescaledb-status  Show TimescaleDB status and chunk distribution"
     echo "  fix-docker-perms    Fix Docker permission issues - idempotent"
     echo "  reset-state         Reset deployment state flags"
     echo "  health              Run health check"
     echo "  backup              Run backup"
+    echo "  troubleshoot        Show detailed container status and logs for debugging"
     echo "  help                Show this help message"
     echo ""
     echo "Environment Configuration:"
@@ -1816,9 +2528,12 @@ show_usage() {
     echo ""
     echo "Examples:"
     echo "  $0 deploy                                    # Full deployment with default repos (prod environment)"
+    echo "  $0 redeploy                                  # Force redeployment with minimal downtime (preserves data)"
+    echo "  $0 reset-deploy                              # DESTRUCTIVE: Reset deployment with database wipe"
     echo "  DEPLOY_ENV=dev $0 deploy                     # Deploy to development environment"
     echo "  DEPLOY_ENV=staging $0 deploy                 # Deploy to staging environment"
     echo "  $0 check-state                               # Check what has been completed"
+    echo "  $0 troubleshoot                              # Show detailed debugging information"
     echo "  FORCE_REBUILD=true $0 build                  # Force rebuild of images"
     echo "  $0 build-frontend                            # Build only frontend image"
     echo "  $0 build-backend                             # Build only backend image"
@@ -1828,7 +2543,8 @@ show_usage() {
     echo "  DEPLOY_ENV=prod $0 restart                   # Restart production services"
     echo "  $0 db-connect                                # Connect to database"
     echo "  $0 db-backup                                 # Create database backup"
-    echo "  $0 db-restore /mnt/hdd/postgres-backups/backup.sql.gz"
+    echo "  $0 timescaledb-setup                         # Setup TimescaleDB (HDD-only)"
+    echo "  $0 db-restore \${HDD_BACKUP_PATH}/postgres-backups/backup.sql.gz"
 }
 
 # Main script logic
@@ -1839,6 +2555,7 @@ case "${1:-deploy}" in
         log_info "Using compose file: $COMPOSE_FILE"
 
         # Check if deployment was already completed
+        local is_redeployment=false
         if is_deploy_complete; then
             log_info "Deployment appears to be complete. Checking service status..."
             load_environment
@@ -1852,6 +2569,7 @@ case "${1:-deploy}" in
                 exit 0
             fi
             log_info "Proceeding with redeployment..."
+            is_redeployment=true
         fi
 
         check_prerequisites
@@ -1859,14 +2577,127 @@ case "${1:-deploy}" in
         setup_storage
         configure_firewall
         setup_ssl
-        ensure_database_initialized
+
         mark_setup_complete
         load_environment
+
+        # Handle redeployment vs fresh deployment differently
+        if [ "$is_redeployment" = true ]; then
+            log_info "Preparing for redeployment (preserving data)..."
+            # Build new images first while services are running (minimize downtime)
+            log_info "Building new images while services are running..."
+            clone_repositories
+            build_images
+
+            # Only stop services after images are built
+            log_info "New images ready. Stopping services for quick restart..."
+            stop_services
+            sleep 5
+            # NOTE: We do NOT clear database data during redeployment to preserve user data
+
+            # Quick restart with new images
+            start_services true  # Force restart
+        else
+            # For fresh deployments, ensure database is initialized
+            log_info "Preparing fresh deployment..."
+            ensure_database_initialized
+            clone_repositories
+            build_images
+            start_services false  # Normal start
+        fi
+
+        log_info "Waiting for services to stabilize before database initialization..."
+        sleep 10
+        wait_for_services_ready
+        init_users_database
+        setup_timescaledb
+        mark_deploy_complete
+        show_status
+        ;;
+    "redeploy")
+        log_info "Starting forced redeployment for $DEPLOY_ENV environment..."
+        log_info "Using environment file: $ENV_FILE"
+        log_info "Using compose file: $COMPOSE_FILE"
+
+        # Force redeployment without asking
+        log_info "Forcing clean redeployment..."
+
+        check_prerequisites
+        install_dependencies
+        setup_storage
+        configure_firewall
+        setup_ssl
+
+        log_info "Preparing for clean redeployment (preserving data)..."
+        load_environment
+
+        mark_setup_complete
+
+        # Build new images first while services are still running (minimize downtime)
+        log_info "Building new images while services are running..."
         clone_repositories
         build_images
-        start_services
-        sleep 20
+
+        # Only stop services after images are built
+        log_info "New images ready. Stopping services for quick restart..."
+        stop_services
+        sleep 5
+
+        # Quick restart with new images (minimal downtime)
+        log_info "Starting services with new images..."
+        start_services true  # Force restart
+
+        log_info "Waiting for services to stabilize before database initialization..."
+        sleep 10
+        wait_for_services_ready
         init_users_database
+        setup_timescaledb
+        mark_deploy_complete
+        show_status
+        ;;
+    "reset-deploy")
+        log_warning "Starting DESTRUCTIVE redeployment for $DEPLOY_ENV environment..."
+        log_warning "This will DELETE ALL DATABASE DATA and reset the system!"
+        log_info "Using environment file: $ENV_FILE"
+        log_info "Using compose file: $COMPOSE_FILE"
+
+        # Confirm destructive action
+        read -p "Are you sure you want to RESET ALL DATA? This cannot be undone! (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Reset deployment cancelled. Use 'redeploy' for safe redeployment."
+            exit 0
+        fi
+
+        log_warning "Proceeding with destructive reset deployment..."
+
+        check_prerequisites
+        install_dependencies
+        setup_storage
+        configure_firewall
+        setup_ssl
+
+        log_info "Preparing for reset deployment (clearing all data)..."
+        load_environment
+        # Stop services first to avoid conflicts
+        stop_services
+        sleep 5
+        # Clear database data for fresh start
+        ensure_database_initialized
+
+        mark_setup_complete
+        clone_repositories
+        build_images
+
+        # Force restart for clean state
+        log_info "Starting services with clean restart..."
+        start_services true  # Force restart
+
+        log_info "Waiting for services to stabilize before database initialization..."
+        sleep 10
+        wait_for_services_ready
+        init_users_database
+        setup_timescaledb
         mark_deploy_complete
         show_status
         ;;
@@ -1909,6 +2740,10 @@ case "${1:-deploy}" in
         stop_services
         start_services
         show_status
+        ;;
+    "wait-ready")
+        load_environment
+        wait_for_services_ready
         ;;
     "status")
         load_environment
@@ -1954,6 +2789,21 @@ case "${1:-deploy}" in
     "ssl-setup")
         setup_ssl
         ;;
+    "firewall-setup")
+        configure_firewall
+        ;;
+    "timescaledb-setup")
+        setup_timescaledb
+        ;;
+    "optimize-timescaledb")
+        optimize_timescaledb
+        ;;
+    "weekly-maintenance")
+        weekly_maintenance
+        ;;
+    "timescaledb-status")
+        timescaledb_status
+        ;;
     "reset-db")
         reset_database
         ;;
@@ -1978,6 +2828,10 @@ case "${1:-deploy}" in
             log_error "Backup script not found"
             exit 1
         fi
+        ;;
+    "troubleshoot")
+        load_environment
+        troubleshoot_deployment
         ;;
     "help"|"--help"|"-h")
         show_usage

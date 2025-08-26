@@ -26,7 +26,7 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./ssl:/etc/nginx/ssl:ro
-      - /mnt/ssd/logs/nginx:/var/log/nginx
+      - /mnt/hdd/logs/nginx:/var/log/nginx
     depends_on:
       - frontend
       - backend
@@ -43,7 +43,7 @@ services:
       - VITE_APP_BASE_URL=${VITE_APP_BASE_URL}
       - VITE_APP_ENVIRONMENT=${VITE_APP_ENVIRONMENT}
     volumes:
-      - /mnt/ssd/uploads:/app/uploads:ro
+      - /mnt/hdd/uploads:/app/uploads:ro
     restart: unless-stopped
     networks:
       - prs-network
@@ -65,8 +65,8 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - SESSION_SECRET=${SESSION_SECRET}
     volumes:
-      - /mnt/ssd/uploads:/app/uploads
-      - /mnt/ssd/logs/backend:/app/logs
+      - /mnt/hdd/uploads:/app/uploads
+      - /mnt/hdd/logs/backend:/app/logs
     depends_on:
       - postgres
       - redis
@@ -84,7 +84,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
     volumes:
-      - /mnt/ssd/postgresql-hot:/var/lib/postgresql/data
+      - /mnt/hdd/postgresql-hot:/var/lib/postgresql/data
       - /mnt/hdd/wal-archive:/var/lib/postgresql/wal-archive
       - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
@@ -100,7 +100,7 @@ services:
     container_name: prs-onprem-redis
     command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
     volumes:
-      - /mnt/ssd/redis:/data
+      - /mnt/hdd/redis:/data
       - ./redis/redis.conf:/etc/redis/redis.conf:ro
     ports:
       - "6379:6379"
@@ -375,7 +375,7 @@ server {
 
 ```ini
 # PostgreSQL Configuration for PRS On-Premises
-# Optimized for 16GB RAM, SSD/HDD dual storage
+# Optimized for 16GB RAM, HDD-only HDD-only storage
 
 # Connection Settings
 listen_addresses = '*'
@@ -445,9 +445,9 @@ track_functions = all
 -- Initialize TimescaleDB Extension
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
--- Create tablespaces for dual storage
-CREATE TABLESPACE ssd_hot LOCATION '/var/lib/postgresql/data/ssd_hot';
-CREATE TABLESPACE hdd_cold LOCATION '/var/lib/postgresql/data/hdd_cold';
+-- Create tablespaces for HDD-only storage
+-- Tablespace creation not needed (HDD-only)
+-- Tablespace creation not needed (HDD-only)
 
 -- Create hypertables for time-series data
 SELECT create_hypertable('notifications', 'created_at', 
@@ -480,8 +480,8 @@ SELECT add_compression_policy('notifications', INTERVAL '7 days');
 SELECT add_compression_policy('audit_logs', INTERVAL '7 days');
 
 -- Add data movement policies
-SELECT add_move_chunk_policy('notifications', INTERVAL '30 days', 'hdd_cold');
-SELECT add_move_chunk_policy('audit_logs', INTERVAL '30 days', 'hdd_cold');
+SELECT add_move_chunk_policy('notifications', INTERVAL '30 days', 'pg_default');
+SELECT add_move_chunk_policy('audit_logs', INTERVAL '30 days', 'pg_default');
 ```
 
 ## Redis Configuration

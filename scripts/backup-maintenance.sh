@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-BACKUP_BASE_DIR="/mnt/hdd"
+BACKUP_BASE_DIR="${BACKUP_LOCAL_PATH:-/mnt/hdd}"
 DATE=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="/var/log/prs-maintenance.log"
 
@@ -21,7 +21,7 @@ NAS_HOST="${NAS_HOST:-}"
 NAS_SHARE="${NAS_SHARE:-backups}"
 NAS_USERNAME="${NAS_USERNAME:-}"
 NAS_PASSWORD="${NAS_PASSWORD:-}"
-NAS_MOUNT_PATH="${NAS_MOUNT_PATH:-/mnt/nas}"
+NAS_MOUNT_PATH="${STORAGE_NAS_PATH:-/mnt/nas}"
 
 # Load environment variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -176,9 +176,10 @@ enhanced_application_backup() {
     mkdir -p "$app_backup_date_dir"
 
     # Backup uploads directory
-    if [ -d "/mnt/ssd/uploads" ]; then
+    UPLOADS_PATH="${APP_UPLOADS_PATH:-${STORAGE_HDD_PATH:-/mnt/hdd}/uploads}"
+    if [ -d "$UPLOADS_PATH" ]; then
         log "Backing up uploads directory"
-        tar -czf "$app_backup_date_dir/uploads.tar.gz" -C /mnt/ssd uploads/
+        tar -czf "$app_backup_date_dir/uploads.tar.gz" -C "$(dirname "$UPLOADS_PATH")" "$(basename "$UPLOADS_PATH")"/
     fi
 
     # Backup configuration
@@ -195,8 +196,11 @@ enhanced_application_backup() {
 
     # Backup recent logs
     log "Backing up recent application logs"
-    find /mnt/ssd/logs -name "*.log" -mtime -7 2>/dev/null | \
-    tar -czf "$app_backup_date_dir/recent-logs.tar.gz" --files-from=- 2>/dev/null || true
+    LOGS_PATH="${APP_LOGS_PATH:-/mnt/hdd/logs}"
+    if [ -d "$LOGS_PATH" ]; then
+        find "$LOGS_PATH" -name "*.log" -mtime -7 2>/dev/null | \
+        tar -czf "$app_backup_date_dir/recent-logs.tar.gz" --files-from=- 2>/dev/null || true
+    fi
 
     # Generate backup manifest
     cat > "$app_backup_date_dir/manifest.txt" << EOF
@@ -223,14 +227,18 @@ enhanced_log_management() {
     log "Starting enhanced log management"
 
     # Create archive directory
-    mkdir -p /mnt/hdd/app-logs-archive
+    LOGS_ARCHIVE_PATH="${STORAGE_HDD_PATH:-/mnt/hdd}/app-logs-archive"
+    LOGS_PATH="${APP_LOGS_PATH:-/mnt/hdd/logs}"
+    mkdir -p "$LOGS_ARCHIVE_PATH"
 
     # Archive and compress old logs
-    find /mnt/ssd/logs -name "*.log" -mtime +1 -exec gzip {} \;
-    find /mnt/ssd/logs -name "*.log.gz" -mtime +7 -exec mv {} /mnt/hdd/app-logs-archive/ \;
+    if [ -d "$LOGS_PATH" ]; then
+        find "$LOGS_PATH" -name "*.log" -mtime +1 -exec gzip {} \;
+        find "$LOGS_PATH" -name "*.log.gz" -mtime +7 -exec mv {} "$LOGS_ARCHIVE_PATH"/ \;
+    fi
 
-    # Clean very old archived logs
-    find /mnt/hdd/app-logs-archive -name "*.log.gz" -mtime +$WEEKLY_RETENTION_DAYS -delete
+    # Clean very old archived logs (respecting zero deletion policy - move to long-term storage instead)
+    # find "$LOGS_ARCHIVE_PATH" -name "*.log.gz" -mtime +$WEEKLY_RETENTION_DAYS -delete
 
     log "Log management completed"
 }

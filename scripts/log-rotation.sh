@@ -5,7 +5,7 @@
 set -euo pipefail
 
 LOG_FILE="/var/log/prs-log-rotation.log"
-APP_LOG_DIR="/mnt/ssd/logs"
+APP_LOG_DIR="${STORAGE_HDD_PATH:-/mnt/hdd}/logs"
 SYSTEM_LOG_DIR="/var/log"
 
 # Retention policies (days)

@@ -190,7 +190,7 @@ docker exec prs-onprem-postgres-timescale pg_dump -U prs_admin -d prs_production
 tar -czf "$BACKUP_DIR/configuration-backup.tar.gz" /opt/prs-deployment/02-docker-configuration/
 
 # Application data backup
-tar -czf "$BACKUP_DIR/uploads-backup.tar.gz" /mnt/ssd/uploads/
+tar -czf "$BACKUP_DIR/uploads-backup.tar.gz" /mnt/hdd/uploads/
 
 log_message "System backup completed"
 
@@ -323,7 +323,7 @@ if ! git ls-remote --tags origin | grep -q "v$NEW_VERSION"; then
 fi
 
 # Check system resources
-FREE_SPACE=$(df /mnt/ssd | awk 'NR==2 {print $4}')
+FREE_SPACE=$(df /mnt/hdd | awk 'NR==2 {print $4}')
 if [ "$FREE_SPACE" -lt 5000000 ]; then  # 5GB
     log_message "ERROR: Insufficient disk space for update"
     exit 1
@@ -343,7 +343,7 @@ tar -czf "$BACKUP_DIR/application-code.tar.gz" /opt/prs/
 tar -czf "$BACKUP_DIR/configuration.tar.gz" /opt/prs-deployment/02-docker-configuration/
 
 # Uploads backup
-tar -czf "$BACKUP_DIR/uploads.tar.gz" /mnt/ssd/uploads/
+tar -czf "$BACKUP_DIR/uploads.tar.gz" /mnt/hdd/uploads/
 
 log_message "Backup completed: $BACKUP_DIR"
 
@@ -484,7 +484,7 @@ docker-compose -f /opt/prs-deployment/02-docker-configuration/docker-compose.onp
 
 # 4. Backup data directory
 log_message "Backing up data directory"
-tar -czf "$UPGRADE_DIR/postgresql-data-backup.tar.gz" /mnt/ssd/postgresql-hot/
+tar -czf "$UPGRADE_DIR/postgresql-data-backup.tar.gz" /mnt/hdd/postgresql-hot/
 
 # 5. Update Docker image
 log_message "Updating PostgreSQL Docker image"
@@ -493,7 +493,7 @@ sed -i "s/timescale\/timescaledb:.*-pg$OLD_VERSION/timescale\/timescaledb:latest
 
 # 6. Initialize new database
 log_message "Initializing new database cluster"
-rm -rf /mnt/ssd/postgresql-hot/*
+rm -rf /mnt/hdd/postgresql-hot/*
 docker-compose -f /opt/prs-deployment/02-docker-configuration/docker-compose.onprem.yml up -d postgres
 
 # Wait for database to be ready

@@ -115,7 +115,7 @@ validate_environment() {
     fi
 
     # Check storage
-    if [ ! -d "/mnt/ssd" ] || [ ! -d "/mnt/hdd" ]; then
+    if [ ! -d "/mnt/hdd" ] || [ ! -d "/mnt/hdd" ]; then
         log_error "Storage not configured. Run setup-storage.sh first."
         exit 1
     fi
@@ -213,8 +213,8 @@ setup_database() {
 
     # Create tablespaces
     docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-        CREATE TABLESPACE IF NOT EXISTS ssd_hot LOCATION '/mnt/ssd/postgresql-hot';
-        CREATE TABLESPACE IF NOT EXISTS hdd_cold LOCATION '/mnt/hdd/postgresql-cold';
+        -- Tablespace creation not needed (HDD-only)
+        -- Tablespace creation not needed (HDD-only)
     "
 
     # Run migrations
@@ -356,7 +356,7 @@ interactive_setup() {
 
 ### setup-storage.sh
 
-**Purpose**: Configure dual storage architecture (SSD/HDD)
+**Purpose**: Configure HDD-only storage architecture (HDD-only)
 
 **Usage**:
 ```bash
@@ -374,7 +374,7 @@ sudo ./setup-storage.sh [--verify-only]
 set -e
 
 # Storage configuration
-SSD_MOUNT="/mnt/ssd"
+SSD_MOUNT="/mnt/hdd"
 HDD_MOUNT="/mnt/hdd"
 
 # Create storage directories
@@ -586,7 +586,7 @@ check_resources() {
     fi
 
     # Storage usage
-    SSD_USAGE=$(df -h /mnt/ssd | awk 'NR==2{print $5}' | cut -d'%' -f1)
+    SSD_USAGE=$(df -h /mnt/hdd | awk 'NR==2{print $5}' | cut -d'%' -f1)
     HDD_USAGE=$(df -h /mnt/hdd | awk 'NR==2{print $5}' | cut -d'%' -f1)
 
     if [ "$SSD_USAGE" -gt 85 ]; then
@@ -687,7 +687,7 @@ log_success "Docker cleanup completed"
 #!/bin/bash
 # Log rotation script
 
-LOG_DIR="/mnt/ssd/logs"
+LOG_DIR="/mnt/hdd/logs"
 ARCHIVE_DIR="/mnt/hdd/app-logs-archive"
 RETENTION_DAYS=30
 

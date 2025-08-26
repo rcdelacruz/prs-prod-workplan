@@ -119,7 +119,7 @@ check_system_resources() {
     output ""
     output "Disk Analysis:"
 
-    local filesystems=("/" "/mnt/ssd" "/mnt/hdd")
+    local filesystems=("/" "/mnt/hdd")
     for fs in "${filesystems[@]}"; do
         if mountpoint -q "$fs" 2>/dev/null || [ "$fs" = "/" ]; then
             local disk_usage=$(df "$fs" | awk 'NR==2 {print $5}' | sed 's/%//')
@@ -316,7 +316,7 @@ generate_recommendations() {
 
     local cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' | cut -d. -f1)
     local memory_usage=$(free | grep Mem | awk '{printf "%.0f", $3/$2 * 100.0}')
-    local ssd_usage=$(df /mnt/ssd 2>/dev/null | awk 'NR==2 {print $5}' | sed 's/%//' || echo "0")
+    # SSD usage check removed - using HDD-only configuration
 
     if [ "$cpu_usage" -gt 80 ]; then
         output "  🔧 High CPU usage ($cpu_usage%) - Consider optimizing applications or scaling"

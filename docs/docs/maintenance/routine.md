@@ -15,6 +15,7 @@ This guide covers routine maintenance procedures for the PRS on-premises deploym
 
 ### Weekly Tasks (Semi-automated)
 - **Database Maintenance** - VACUUM, ANALYZE, and index optimization
+- **TimescaleDB Optimization** - Automatic compression, chunk optimization, and multi-tier storage management
 - **Storage Cleanup** - Remove temporary files and compress old logs
 - **Security Updates** - Apply critical security patches
 - **Performance Review** - Analyze performance trends
@@ -68,7 +69,7 @@ ANALYZE purchase_orders;
 # 3. Check Database Performance
 log_message "Checking database performance"
 SLOW_QUERIES=$(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "
-SELECT count(*) FROM pg_stat_statements 
+SELECT count(*) FROM pg_stat_statements
 WHERE mean_time > 1000 AND calls > 10;
 " | xargs)
 
@@ -78,7 +79,7 @@ fi
 
 # 4. Storage Monitoring
 log_message "Monitoring storage usage"
-SSD_USAGE=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+SSD_USAGE=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
 HDD_USAGE=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
 
 log_message "Storage usage - SSD: ${SSD_USAGE}%, HDD: ${HDD_USAGE}%"
@@ -87,10 +88,10 @@ log_message "Storage usage - SSD: ${SSD_USAGE}%, HDD: ${HDD_USAGE}%"
 if [ "$SSD_USAGE" -gt 85 ]; then
     log_message "High SSD usage, triggering data movement"
     docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-    SELECT move_chunk(chunk_name, 'hdd_cold')
-    FROM timescaledb_information.chunks 
+    SELECT move_chunk(chunk_name, 'pg_default')
+    FROM timescaledb_information.chunks
     WHERE range_start < NOW() - INTERVAL '14 days'
-    AND tablespace_name = 'ssd_hot'
+    AND tablespace_name = 'pg_default'
     LIMIT 5;
     "
 fi
@@ -98,10 +99,10 @@ fi
 # 5. Log File Management
 log_message "Managing log files"
 # Compress logs older than 1 day
-find /mnt/ssd/logs -name "*.log" -mtime +1 -exec gzip {} \;
+find /mnt/hdd/logs -name "*.log" -mtime +1 -exec gzip {} \;
 
 # Move compressed logs older than 7 days to HDD
-find /mnt/ssd/logs -name "*.log.gz" -mtime +7 -exec mv {} /mnt/hdd/logs/ \;
+find /mnt/hdd/logs -name "*.log.gz" -mtime +7 -exec mv {} /mnt/hdd/logs/ \;
 
 # Remove logs older than 90 days
 find /mnt/hdd/logs -name "*.log.gz" -mtime +90 -delete
@@ -137,7 +138,7 @@ PRS Daily Maintenance Summary - $(date)
 ========================================
 
 System Status:
-- SSD Usage: ${SSD_USAGE}%
+- HDD Usage: ${SSD_USAGE}%
 - HDD Usage: ${HDD_USAGE}%
 - Slow Queries: $SLOW_QUERIES
 - Unhealthy Containers: $UNHEALTHY_CONTAINERS
@@ -171,7 +172,7 @@ echo "=========================================="
 echo "1. System Resources:"
 echo "   CPU: $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//')% usage"
 echo "   Memory: $(free | grep Mem | awk '{printf "%.1f", $3/$2 * 100.0}')% usage"
-echo "   SSD: $(df /mnt/ssd | awk 'NR==2 {print $5}') usage"
+echo "   SSD: $(df /mnt/hdd | awk 'NR==2 {print $5}') usage"
 echo "   HDD: $(df /mnt/hdd | awk 'NR==2 {print $5}') usage"
 
 # Service Status
@@ -243,10 +244,14 @@ VACUUM (ANALYZE, VERBOSE) requisitions;
 VACUUM (ANALYZE, VERBOSE) purchase_orders;
 "
 
-# 2. Index Maintenance
+# 2. TimescaleDB Automated Maintenance
+log_message "Running TimescaleDB automated maintenance"
+/opt/prs/prs-deployment/scripts/deploy-onprem.sh weekly-maintenance
+
+# 3. Index Maintenance
 log_message "Checking index usage"
 UNUSED_INDEXES=$(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "
-SELECT count(*) FROM pg_stat_user_indexes 
+SELECT count(*) FROM pg_stat_user_indexes
 WHERE idx_scan = 0 AND pg_relation_size(indexrelid) > 1024*1024;
 " | xargs)
 
@@ -262,13 +267,13 @@ find /tmp -type f -mtime +7 -delete 2>/dev/null || true
 find /var/tmp -type f -mtime +7 -delete 2>/dev/null || true
 
 # Compress old application logs
-find /mnt/ssd/logs -name "*.log" -mtime +3 -exec gzip {} \;
+find /mnt/hdd/logs -name "*.log" -mtime +3 -exec gzip {} \;
 
 # 4. TimescaleDB Optimization
 log_message "Optimizing TimescaleDB"
 docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-SELECT compress_chunk(chunk_name) 
-FROM timescaledb_information.chunks 
+SELECT compress_chunk(chunk_name)
+FROM timescaledb_information.chunks
 WHERE range_start < NOW() - INTERVAL '7 days'
 AND NOT is_compressed
 AND hypertable_name IN ('notifications', 'audit_logs')
@@ -283,7 +288,7 @@ log_message "Available security updates: $SECURITY_UPDATES"
 if [ "$SECURITY_UPDATES" -gt 0 ]; then
     log_message "Security updates available - manual review required"
     apt list --upgradable 2>/dev/null | grep security > /tmp/security-updates.txt
-    
+
     if command -v mail >/dev/null 2>&1; then
         mail -s "PRS Security Updates Available" admin@your-domain.com < /tmp/security-updates.txt
     fi
@@ -292,17 +297,17 @@ fi
 # 6. Performance Analysis
 log_message "Analyzing performance trends"
 docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-SELECT 
+SELECT
     'Top 5 Slow Queries (7 days)' as analysis;
 
-SELECT 
+SELECT
     left(query, 80) as query_snippet,
     calls,
     round(mean_time::numeric, 2) as avg_time_ms,
     round(total_time::numeric, 2) as total_time_ms
-FROM pg_stat_statements 
+FROM pg_stat_statements
 WHERE calls > 100
-ORDER BY total_time DESC 
+ORDER BY total_time DESC
 LIMIT 5;
 " > /tmp/weekly-performance-analysis.txt
 
@@ -331,7 +336,9 @@ Generated: $(date)
 Database Maintenance:
 - VACUUM ANALYZE completed for main tables
 - Found $UNUSED_INDEXES unused indexes
-- TimescaleDB compression updated
+- TimescaleDB automated maintenance completed
+- Chunk optimization and compression updated
+- Multi-tier storage management active
 
 Storage Management:
 - Docker system cleanup completed
@@ -346,7 +353,7 @@ Performance:
 $(cat /tmp/weekly-performance-analysis.txt)
 
 System Health:
-- SSD Usage: $(df /mnt/ssd | awk 'NR==2 {print $5}')
+- HDD Usage: $(df /mnt/hdd | awk 'NR==2 {print $5}')
 - HDD Usage: $(df /mnt/hdd | awk 'NR==2 {print $5}')
 - Memory Usage: $(free | grep Mem | awk '{printf "%.1f", $3/$2 * 100.0}')%
 - Load Average: $(uptime | awk -F'load average:' '{print $2}')
@@ -354,7 +361,7 @@ System Health:
 Recommendations:
 $(if [ "$UNUSED_INDEXES" -gt 3 ]; then echo "- Review and remove unused indexes"; fi)
 $(if [ "$SECURITY_UPDATES" -gt 0 ]; then echo "- Apply security updates during next maintenance window"; fi)
-$(if [ "$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')" -gt 80 ]; then echo "- Monitor SSD usage and consider data archival"; fi)
+$(if [ "$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')" -gt 80 ]; then echo "- Monitor SSD usage and consider data archival"; fi)
 EOF
 
 log_message "Weekly maintenance report generated: $REPORT_FILE"
@@ -397,20 +404,20 @@ echo "" >> "$REPORT_FILE"
 echo "CAPACITY ANALYSIS" >> "$REPORT_FILE"
 echo "-----------------" >> "$REPORT_FILE"
 echo "Storage Usage:" >> "$REPORT_FILE"
-df -h /mnt/ssd /mnt/hdd >> "$REPORT_FILE"
+df -h /mnt/hdd /mnt/hdd >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 
 echo "Database Size Growth:" >> "$REPORT_FILE"
 docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-SELECT 
+SELECT
     'Total Database Size: ' || pg_size_pretty(pg_database_size('prs_production'))
 UNION ALL
-SELECT 
+SELECT
     'Largest Tables:'
 UNION ALL
-SELECT 
+SELECT
     '  ' || tablename || ': ' || pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename))
-FROM pg_tables 
+FROM pg_tables
 WHERE schemaname = 'public'
 ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
 LIMIT 5;
@@ -421,18 +428,18 @@ echo "" >> "$REPORT_FILE"
 echo "PERFORMANCE SUMMARY" >> "$REPORT_FILE"
 echo "-------------------" >> "$REPORT_FILE"
 docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-SELECT 
+SELECT
     'Cache Hit Ratio: ' || round(100.0 * sum(blks_hit) / nullif(sum(blks_hit) + sum(blks_read), 0), 2) || '%'
-FROM pg_stat_database 
+FROM pg_stat_database
 WHERE datname = 'prs_production'
 UNION ALL
-SELECT 
+SELECT
     'Active Connections: ' || count(*)::text
 FROM pg_stat_activity
 UNION ALL
-SELECT 
+SELECT
     'Slow Queries (>1s): ' || count(*)::text
-FROM pg_stat_statements 
+FROM pg_stat_statements
 WHERE mean_time > 1000;
 " >> "$REPORT_FILE"
 
@@ -452,7 +459,7 @@ echo "" >> "$REPORT_FILE"
 echo "RECOMMENDATIONS" >> "$REPORT_FILE"
 echo "---------------" >> "$REPORT_FILE"
 
-SSD_USAGE=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+SSD_USAGE=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
 if [ "$SSD_USAGE" -gt 75 ]; then
     echo "- Consider SSD capacity expansion (current: ${SSD_USAGE}%)" >> "$REPORT_FILE"
 fi
@@ -491,8 +498,11 @@ echo "Monthly maintenance report generated: $REPORT_FILE"
 # Daily maintenance at 1:00 AM
 0 1 * * * /opt/prs-deployment/scripts/daily-routine-maintenance.sh
 
-# Weekly maintenance on Sunday at 2:00 AM
+# Weekly maintenance on Sunday at 2:00 AM (includes TimescaleDB automation)
 0 2 * * 0 /opt/prs-deployment/scripts/weekly-routine-maintenance.sh
+
+# TimescaleDB status check daily at 8:00 AM
+0 8 * * * /opt/prs/prs-deployment/scripts/deploy-onprem.sh timescaledb-status >> /var/log/timescaledb-status.log 2>&1
 
 # Monthly maintenance on first Sunday at 3:00 AM
 0 3 1-7 * 0 /opt/prs-deployment/scripts/monthly-comprehensive-review.sh
@@ -542,7 +552,7 @@ echo "----------------------"
 echo "Uptime: $(uptime -p)"
 echo "Load: $(uptime | awk -F'load average:' '{print $2}')"
 echo "Memory: $(free -h | grep Mem | awk '{print $3 "/" $2}')"
-echo "SSD: $(df -h /mnt/ssd | awk 'NR==2 {print $3 "/" $2 " (" $5 ")"}')"
+echo "SSD: $(df -h /mnt/hdd | awk 'NR==2 {print $3 "/" $2 " (" $5 ")"}')"
 echo "HDD: $(df -h /mnt/hdd | awk 'NR==2 {print $3 "/" $2 " (" $5 ")"}')"
 
 echo ""
@@ -562,10 +572,23 @@ echo "Weekly: Next Sunday at 2:00 AM"
 echo "Monthly: First Sunday of next month at 3:00 AM"
 ```
 
+## TimescaleDB-Specific Maintenance
+
+For detailed TimescaleDB maintenance procedures, automation, and troubleshooting:
+
+- **[TimescaleDB Automation Guide](./timescaledb-automation.md)** - Comprehensive automation strategy
+- **[TimescaleDB Quick Reference](./timescaledb-quick-reference.md)** - Quick commands and troubleshooting
+
+### Key TimescaleDB Maintenance Points
+
+- **Automated Weekly**: Chunk optimization, compression, and multi-tier storage management
+- **Monitoring**: Daily status checks and performance monitoring
+- **Manual Intervention**: Rarely needed - only for troubleshooting or configuration changes
+
 ---
 
 !!! success "Routine Maintenance Configured"
-    Your PRS deployment now has comprehensive routine maintenance procedures with automated daily, weekly, and monthly tasks to ensure optimal system health.
+    Your PRS deployment now has comprehensive routine maintenance procedures with automated daily, weekly, and monthly tasks to ensure optimal system health, including intelligent TimescaleDB automation.
 
 !!! tip "Maintenance Windows"
     Schedule intensive maintenance tasks during low-usage periods and always notify users of planned maintenance activities.

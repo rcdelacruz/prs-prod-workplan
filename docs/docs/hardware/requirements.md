@@ -12,8 +12,7 @@ This guide specifies the complete hardware requirements for the PRS on-premises 
 |-----------|---------|-------------|------------|
 | **CPU** | 4 cores @ 2.4GHz | 8 cores @ 3.0GHz | 16 cores @ 3.2GHz |
 | **RAM** | 16 GB DDR4 | 32 GB DDR4 | 64 GB DDR4 |
-| **SSD Storage** | 470 GB RAID1 | 1 TB RAID1 | 2 TB RAID1 |
-| **HDD Storage** | 2.4 TB RAID5 | 5 TB RAID5 | 10 TB RAID5 |
+| **HDD Storage** | 2 TB Single Drive | 4 TB RAID1 | 8 TB RAID1 |
 | **Network** | 1 Gbps | 1 Gbps | 10 Gbps |
 | **Power** | 650W UPS | 1000W UPS | 1500W UPS |
 
@@ -75,59 +74,42 @@ Total RAM: 16 GB (Minimum) / 32 GB (Recommended)
 
 ### Storage Requirements
 
-#### SSD Storage (Hot Data Tier)
+#### HDD Storage (Simplified Single-Tier)
 
-**Purpose**: High-performance storage for active data (0-30 days)
-
-| Configuration | Capacity | RAID Level | Performance |
-|---------------|----------|------------|-------------|
-| **Minimum** | 470 GB | RAID1 | 500 IOPS |
-| **Recommended** | 1 TB | RAID1 | 1000 IOPS |
-| **Enterprise** | 2 TB | RAID10 | 2000+ IOPS |
-
-**SSD Specifications**:
-- **Interface**: SATA III (6 Gbps) or NVMe
-- **Type**: Enterprise SSD (not consumer grade)
-- **Endurance**: 1+ DWPD (Drive Writes Per Day)
-- **Examples**: Samsung 883 DCT, Intel D3-S4610
-
-**SSD Usage Breakdown**:
-```
-Total SSD: 470 GB
-├── PostgreSQL Hot Data: 200 GB
-├── Redis Data: 50 GB
-├── Application Uploads: 100 GB
-├── Application Logs: 50 GB
-├── System Cache: 50 GB
-└── Free Space (20%): 20 GB
-```
-
-#### HDD Storage (Cold Data Tier)
-
-**Purpose**: High-capacity storage for archived data (30+ days)
+**Purpose**: Cost-effective, high-capacity storage for all data types
 
 | Configuration | Capacity | RAID Level | Performance |
 |---------------|----------|------------|-------------|
-| **Minimum** | 2.4 TB | RAID5 | 200 IOPS |
-| **Recommended** | 5 TB | RAID5 | 300 IOPS |
-| **Enterprise** | 10+ TB | RAID6 | 500+ IOPS |
+| **Minimum** | 2 TB | Single Drive | 150 IOPS |
+| **Recommended** | 4 TB | RAID1 | 200 IOPS |
+| **Enterprise** | 8 TB | RAID1 | 300+ IOPS |
 
 **HDD Specifications**:
 - **Interface**: SATA III (6 Gbps)
 - **Speed**: 7200 RPM minimum
 - **Cache**: 128 MB or higher
-- **Type**: Enterprise/NAS drives
-- **Examples**: WD Red Pro, Seagate IronWolf Pro
+- **Type**: Enterprise/NAS drives (for reliability)
+- **Examples**: WD Red Pro, Seagate IronWolf Pro, WD Black
 
 **HDD Usage Breakdown**:
 ```
-Total HDD: 2.4 TB
-├── PostgreSQL Cold Data: 1.5 TB
-├── Database Backups: 500 GB
-├── Application Backups: 200 GB
-├── Log Archives: 100 GB
-└── Free Space (20%): 100 GB
+Total HDD: 2 TB (Minimum Configuration)
+├── PostgreSQL Data: 800 GB
+├── Redis Data: 100 GB
+├── Application Uploads: 500 GB
+├── System Logs: 200 GB
+├── Nginx Cache: 50 GB
+├── Monitoring Data: 100 GB
+├── Database Backups: 200 GB
+└── Free Space (20%): 50 GB
 ```
+
+**Benefits of HDD-Only Configuration**:
+- **Simplified Management**: Single storage tier to manage
+- **Lower Cost**: Significantly cheaper per GB than SSD
+- **High Capacity**: Easily accommodate large datasets
+- **Adequate Performance**: Suitable for most business workloads
+- **Easy Expansion**: Simple to add more capacity
 
 ### Network Requirements
 
@@ -194,34 +176,35 @@ graph TB
 - **Airflow**: Front-to-back cooling
 - **Redundancy**: Redundant cooling fans
 
-### RAID Configuration
+### Storage Configuration
 
-#### SSD RAID Configuration (RAID1)
+#### Single Drive Configuration (Budget Option)
 ```bash
-# Create RAID1 for SSD drives
+# Format single drive
+sudo mkfs.ext4 /dev/sda1
+
+# Create mount point
+sudo mkdir -p /mnt/hdd
+
+# Mount with optimal options
+sudo mount -o defaults,noatime /dev/sda1 /mnt/hdd
+
+# Add to fstab
+echo "/dev/sda1 /mnt/hdd ext4 defaults,noatime 0 2" | sudo tee -a /etc/fstab
+```
+
+#### HDD RAID1 Configuration (Recommended)
+```bash
+# Create RAID1 for HDD drives (2 drives for redundancy)
 sudo mdadm --create /dev/md0 --level=1 --raid-devices=2 /dev/sda /dev/sdb
 
 # Format and mount
 sudo mkfs.ext4 /dev/md0
-sudo mkdir -p /mnt/ssd
-sudo mount /dev/md0 /mnt/ssd
-
-# Add to fstab
-echo "/dev/md0 /mnt/ssd ext4 defaults,noatime 0 2" | sudo tee -a /etc/fstab
-```
-
-#### HDD RAID Configuration (RAID5)
-```bash
-# Create RAID5 for HDD drives (minimum 3 drives)
-sudo mdadm --create /dev/md1 --level=5 --raid-devices=3 /dev/sdc /dev/sdd /dev/sde
-
-# Format and mount
-sudo mkfs.ext4 /dev/md1
 sudo mkdir -p /mnt/hdd
-sudo mount /dev/md1 /mnt/hdd
+sudo mount /dev/md0 /mnt/hdd
 
 # Add to fstab
-echo "/dev/md1 /mnt/hdd ext4 defaults,noatime 0 2" | sudo tee -a /etc/fstab
+echo "/dev/md0 /mnt/hdd ext4 defaults,noatime 0 2" | sudo tee -a /etc/fstab
 ```
 
 ## Hardware Validation
@@ -254,11 +237,15 @@ sysbench memory --memory-total-size=10G --threads=4 run
 # Install fio for storage testing
 sudo apt install fio
 
-# SSD performance test
-sudo fio --name=ssd-test --filename=/mnt/ssd/test --size=10G --rw=randwrite --bs=4k --numjobs=4 --time_based --runtime=300
+# HDD performance test (random I/O)
+sudo fio --name=hdd-random-test --filename=/mnt/hdd/test --size=10G --rw=randwrite --bs=4k --numjobs=2 --time_based --runtime=300
 
-# HDD performance test
-sudo fio --name=hdd-test --filename=/mnt/hdd/test --size=10G --rw=randwrite --bs=64k --numjobs=2 --time_based --runtime=300
+# HDD performance test (sequential I/O)
+sudo fio --name=hdd-sequential-test --filename=/mnt/hdd/test --size=10G --rw=write --bs=64k --numjobs=1 --time_based --runtime=300
+
+# Expected HDD performance:
+# Random 4K writes: 100-200 IOPS
+# Sequential 64K writes: 100-150 MB/s
 ```
 
 #### Network Performance Testing
@@ -307,28 +294,25 @@ sudo systemctl start smartd
 
 ### Recommended Server Configurations
 
-#### Budget Configuration (~$3,000)
+#### Budget Configuration (~$2,000)
 - **Server**: Dell PowerEdge T340 or HP ProLiant ML110
 - **CPU**: Intel Xeon E-2224 (4 cores, 3.4 GHz)
 - **RAM**: 32 GB DDR4 ECC
-- **SSD**: 2x 480 GB Enterprise SSD (RAID1)
-- **HDD**: 3x 2 TB Enterprise HDD (RAID5)
+- **HDD**: 1x 4 TB Enterprise HDD (Single Drive)
 - **UPS**: APC Smart-UPS 1000VA
 
-#### Recommended Configuration (~$5,000)
+#### Recommended Configuration (~$3,500)
 - **Server**: Dell PowerEdge T440 or HP ProLiant ML350
 - **CPU**: Intel Xeon Silver 4214 (12 cores, 2.2 GHz)
 - **RAM**: 64 GB DDR4 ECC
-- **SSD**: 2x 960 GB Enterprise SSD (RAID1)
-- **HDD**: 4x 4 TB Enterprise HDD (RAID5)
+- **HDD**: 2x 4 TB Enterprise HDD (RAID1)
 - **UPS**: APC Smart-UPS 1500VA
 
-#### Enterprise Configuration (~$8,000)
+#### Enterprise Configuration (~$5,500)
 - **Server**: Dell PowerEdge R440 or HP ProLiant DL380
 - **CPU**: Intel Xeon Gold 6248R (24 cores, 3.0 GHz)
 - **RAM**: 128 GB DDR4 ECC
-- **SSD**: 4x 1.92 TB Enterprise SSD (RAID10)
-- **HDD**: 6x 8 TB Enterprise HDD (RAID6)
+- **HDD**: 2x 8 TB Enterprise HDD (RAID1)
 - **UPS**: APC Smart-UPS 3000VA
 
 ### Vendor Recommendations
@@ -340,9 +324,9 @@ sudo systemctl start smartd
 - **Supermicro**: SuperServer series (custom configurations)
 
 #### Storage Vendors
-- **SSD**: Samsung, Intel, Micron (enterprise grade)
-- **HDD**: Western Digital Red Pro, Seagate IronWolf Pro
-- **RAID Controllers**: LSI MegaRAID, Adaptec, Dell PERC
+- **HDD**: Western Digital Red Pro, Seagate IronWolf Pro, WD Black
+- **RAID Controllers**: LSI MegaRAID, Adaptec, Dell PERC (for RAID setups)
+- **Budget HDD**: Western Digital Blue, Seagate Barracuda (for single drive setups)
 
 #### UPS Vendors
 - **APC**: Smart-UPS series

@@ -94,7 +94,7 @@ storage_maintenance() {
     log_message "Starting storage maintenance"
 
     # Check storage usage
-    local ssd_usage=$(df /mnt/ssd | awk 'NR==2 {print $5}' | sed 's/%//')
+    local ssd_usage=$(df ${STORAGE_HDD_PATH:-/mnt/hdd} | awk 'NR==2 {print $5}' | sed 's/%//')
     local hdd_usage=$(df /mnt/hdd | awk 'NR==2 {print $5}' | sed 's/%//')
 
     log_message "Storage usage - SSD: ${ssd_usage}%, HDD: ${hdd_usage}%"
@@ -103,10 +103,10 @@ storage_maintenance() {
     if [ "$ssd_usage" -gt 85 ]; then
         log_message "High SSD usage detected, triggering data movement"
         docker exec prs-onprem-postgres-timescale psql -U "${POSTGRES_USER:-prs_user}" -d "${POSTGRES_DB:-prs_production}" -c "
-        SELECT move_chunk(chunk_name, 'hdd_cold')
+        SELECT move_chunk(chunk_name, 'pg_default')
         FROM timescaledb_information.chunks
         WHERE range_start < NOW() - INTERVAL '14 days'
-        AND tablespace_name = 'ssd_hot'
+        AND tablespace_name = 'pg_default'
         LIMIT 5;
         "
     fi
@@ -118,18 +118,18 @@ storage_maintenance() {
 
     # Clean old application logs
     log_message "Managing application logs"
-    find /mnt/ssd/logs -name "*.log" -mtime +$LOG_RETENTION_DAYS -exec gzip {} \;
-    find /mnt/ssd/logs -name "*.log.gz" -mtime +30 -delete
+    find ${STORAGE_HDD_PATH:-/mnt/hdd}/logs -name "*.log" -mtime +$LOG_RETENTION_DAYS -exec gzip {} \;
+    find ${STORAGE_HDD_PATH:-/mnt/hdd}/logs -name "*.log.gz" -mtime +30 -delete
 
     # Docker system cleanup
     log_message "Cleaning Docker system"
     docker system prune -f --volumes
 
     # Check for large files
-    local large_files=$(find /mnt/ssd -type f -size +1G 2>/dev/null | wc -l)
+    local large_files=$(find ${STORAGE_HDD_PATH:-/mnt/hdd} -type f -size +1G 2>/dev/null | wc -l)
     if [ "$large_files" -gt 0 ]; then
         log_message "Found $large_files files larger than 1GB"
-        find /mnt/ssd -type f -size +1G -exec ls -lh {} \; >> "$LOG_FILE"
+        find ${STORAGE_HDD_PATH:-/mnt/hdd} -type f -size +1G -exec ls -lh {} \; >> "$LOG_FILE"
     fi
 }
 

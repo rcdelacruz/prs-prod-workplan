@@ -26,7 +26,7 @@ docker-compose -f ../02-docker-configuration/docker-compose.onprem.yml ps --filt
 
 ```bash
 # Check storage usage
-df -h /mnt/ssd /mnt/hdd
+df -h /mnt/hdd /mnt/hdd
 
 # Check RAID status
 cat /proc/mdstat
@@ -53,6 +53,19 @@ SELECT pg_size_pretty(pg_database_size('prs_production')) as database_size;
 
 -- Check recent activity
 SELECT COUNT(*) as recent_records FROM notifications WHERE created_at >= NOW() - INTERVAL '24 hours';
+
+-- Check TimescaleDB compression status
+SELECT * FROM timescaledb_status ORDER BY total_size_mb DESC LIMIT 10;
+
+-- Check chunk compression effectiveness
+SELECT
+    hypertable_name,
+    total_chunks,
+    compressed_chunks,
+    ROUND((compressed_chunks::numeric / total_chunks * 100), 1) as compression_percentage
+FROM timescaledb_status
+WHERE total_chunks > 0
+ORDER BY compression_percentage ASC;
 ```
 
 ### Check (12:00 PM)
@@ -130,7 +143,7 @@ tail -20 /var/log/prs-backup.log
 |--------|--------|---------|----------|---------|
 | **CPU Usage** | <60% | >70% | >85% | Investigate high CPU processes |
 | **Memory Usage** | <75% | >80% | >90% | Check for memory leaks |
-| **SSD Usage** | <80% | >85% | >90% | Archive old data |
+| **HDD Usage** | <80% | >85% | >90% | Archive old data |
 | **HDD Usage** | <70% | >80% | >90% | Expand storage |
 | **Network Usage** | <50% | >70% | >90% | Check network traffic |
 
@@ -148,27 +161,27 @@ tail -20 /var/log/prs-backup.log
 ```sql
 -- Check slow queries
 SELECT query, calls, total_time, mean_time, rows
-FROM pg_stat_statements 
-ORDER BY total_time DESC 
+FROM pg_stat_statements
+ORDER BY total_time DESC
 LIMIT 10;
 
 -- Check table sizes
-SELECT 
+SELECT
     schemaname,
     tablename,
     pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
-FROM pg_tables 
+FROM pg_tables
 WHERE schemaname = 'public'
 ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
 LIMIT 10;
 
 -- Check TimescaleDB chunk status
-SELECT 
+SELECT
     hypertable_name,
     COUNT(*) as total_chunks,
     COUNT(*) FILTER (WHERE is_compressed) as compressed_chunks,
-    COUNT(*) FILTER (WHERE tablespace_name = 'ssd_hot') as ssd_chunks,
-    COUNT(*) FILTER (WHERE tablespace_name = 'hdd_cold') as hdd_chunks
+    COUNT(*) FILTER (WHERE tablespace_name = 'pg_default') as ssd_chunks,
+    COUNT(*) FILTER (WHERE tablespace_name = 'pg_default') as hdd_chunks
 FROM timescaledb_information.chunks
 GROUP BY hypertable_name;
 ```
@@ -200,7 +213,7 @@ docker exec prs-onprem-backend logrotate /etc/logrotate.conf
 docker system prune -f --filter "until=24h"
 
 # Archive old logs to HDD
-find /mnt/ssd/logs -name "*.log" -mtime +7 -exec mv {} /mnt/hdd/app-logs-archive/ \;
+find /mnt/hdd/logs -name "*.log" -mtime +7 -exec mv {} /mnt/hdd/app-logs-archive/ \;
 ```
 
 #### Maintenance
@@ -212,7 +225,7 @@ ANALYZE audit_logs;
 ANALYZE requisitions;
 
 -- Check for bloated tables
-SELECT 
+SELECT
     schemaname,
     tablename,
     n_tup_ins,
@@ -274,17 +287,17 @@ docker-compose -f ../02-docker-configuration/docker-compose.onprem.yml restart b
 ```bash
 # If SSD usage >85%
 # 1. Check for large files
-find /mnt/ssd -type f -size +100M -exec ls -lh {} \;
+find /mnt/hdd -type f -size +100M -exec ls -lh {} \;
 
 # 2. Compress old logs
-find /mnt/ssd/logs -name "*.log" -mtime +1 -exec gzip {} \;
+find /mnt/hdd/logs -name "*.log" -mtime +1 -exec gzip {} \;
 
 # 3. Move old data to HDD
 docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-SELECT move_chunk(chunk_name, 'hdd_cold')
-FROM timescaledb_information.chunks 
+SELECT move_chunk(chunk_name, 'pg_default')
+FROM timescaledb_information.chunks
 WHERE range_start < NOW() - INTERVAL '14 days'
-AND tablespace_name = 'ssd_hot'
+AND tablespace_name = 'pg_default'
 LIMIT 10;
 "
 ```
@@ -294,16 +307,16 @@ LIMIT 10;
 ```bash
 # Check connection count
 docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-SELECT count(*) as connections, state 
-FROM pg_stat_activity 
+SELECT count(*) as connections, state
+FROM pg_stat_activity
 GROUP BY state;
 "
 
 # Kill idle connections if needed
 docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -c "
-SELECT pg_terminate_backend(pid) 
-FROM pg_stat_activity 
-WHERE state = 'idle' 
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE state = 'idle'
 AND query_start < NOW() - INTERVAL '1 hour';
 "
 
@@ -352,7 +365,7 @@ PRS Daily Operations Report - $(date +%Y-%m-%d)
 System Status:
 - CPU Usage: $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)%
 - Memory Usage: $(free | grep Mem | awk '{printf("%.1f%%", $3/$2 * 100.0)}')
-- SSD Usage: $(df -h /mnt/ssd | awk 'NR==2{print $5}')
+- HDD Usage: $(df -h /mnt/hdd | awk 'NR==2{print $5}')
 - HDD Usage: $(df -h /mnt/hdd | awk 'NR==2{print $5}')
 
 Service Status:
@@ -361,6 +374,12 @@ $(docker-compose -f /opt/prs-deployment/02-docker-configuration/docker-compose.o
 Database Status:
 - Active Connections: $(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "SELECT count(*) FROM pg_stat_activity WHERE state = 'active';" | xargs)
 - Database Size: $(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "SELECT pg_size_pretty(pg_database_size('prs_production'));" | xargs)
+
+TimescaleDB Status:
+- Total Hypertables: $(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "SELECT count(*) FROM timescaledb_information.hypertables;" | xargs)
+- Total Chunks: $(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "SELECT count(*) FROM timescaledb_information.chunks;" | xargs)
+- Compressed Chunks: $(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "SELECT count(*) FROM timescaledb_information.chunks WHERE is_compressed;" | xargs)
+- Compression Ratio: $(docker exec prs-onprem-postgres-timescale psql -U prs_admin -d prs_production -t -c "SELECT ROUND((SELECT count(*)::numeric FROM timescaledb_information.chunks WHERE is_compressed) / (SELECT count(*) FROM timescaledb_information.chunks) * 100, 1) || '%';" | xargs)
 
 Backup Status:
 - Latest Backup: $(ls -t /mnt/hdd/postgres-backups/*.sql 2>/dev/null | head -1 | xargs basename)

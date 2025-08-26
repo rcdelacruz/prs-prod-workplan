@@ -2,12 +2,22 @@
 # /opt/prs-deployment/scripts/backup-application-data.sh
 # Backup application files and uploads for PRS on-premises deployment
 
+# Load environment variables
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+if [ -f "$PROJECT_DIR/02-docker-configuration/.env" ]; then
+    set -a
+    source "$PROJECT_DIR/02-docker-configuration/.env"
+    set +a
+fi
+
 set -euo pipefail
 
-LOCAL_BACKUP_DIR="/mnt/hdd/app-backups"
-NAS_BACKUP_DIR="${NAS_MOUNT_PATH:-/mnt/nas}/app-backups"
-RETENTION_DAYS=14
-NAS_RETENTION_DAYS=60
+LOCAL_BACKUP_DIR="${BACKUP_LOCAL_PATH:-/mnt/hdd}/app-backups"
+NAS_BACKUP_DIR="${BACKUP_NAS_PATH:-${STORAGE_NAS_PATH:-/mnt/nas}}/app-backups"
+RETENTION_DAYS=${BACKUP_APP_REVIEW_THRESHOLD_DAYS:-14}
+ARCHIVE_THRESHOLD_DAYS=${BACKUP_ARCHIVE_THRESHOLD_DAYS:-90}
+LONGTERM_THRESHOLD_DAYS=${BACKUP_LONGTERM_THRESHOLD_DAYS:-365}
 LOG_FILE="/var/log/prs-backup.log"
 
 # NAS Configuration
@@ -16,7 +26,7 @@ NAS_HOST="${NAS_HOST:-}"
 NAS_SHARE="${NAS_SHARE:-backups}"
 NAS_USERNAME="${NAS_USERNAME:-}"
 NAS_PASSWORD="${NAS_PASSWORD:-}"
-NAS_MOUNT_PATH="${NAS_MOUNT_PATH:-/mnt/nas}"
+NAS_MOUNT_PATH="${STORAGE_NAS_PATH:-${STORAGE_NAS_PATH:-/mnt/nas}}"
 
 # Load environment variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -102,8 +112,9 @@ main() {
 
     # Backup uploads directory
     log_message "Backing up uploads directory"
-    if [ -d "/mnt/ssd/uploads" ]; then
-        tar -czf "$APP_BACKUP_DIR/uploads.tar.gz" -C /mnt/ssd uploads/
+    UPLOADS_PATH="${APP_UPLOADS_PATH:-${STORAGE_HDD_PATH:-${STORAGE_HDD_PATH:-/mnt/hdd}}/uploads}"
+    if [ -d "$UPLOADS_PATH" ]; then
+        tar -czf "$APP_BACKUP_DIR/uploads.tar.gz" -C "$(dirname "$UPLOADS_PATH")" "$(basename "$UPLOADS_PATH")"/
         log_message "Uploads backup completed"
     fi
 
@@ -121,8 +132,11 @@ main() {
 
     # Backup logs (recent only)
     log_message "Backing up recent logs"
-    find /mnt/ssd/logs -name "*.log" -mtime -7 | \
-    tar -czf "$APP_BACKUP_DIR/recent-logs.tar.gz" --files-from=-
+    LOGS_PATH="${APP_LOGS_PATH:-${STORAGE_HDD_PATH:-/mnt/hdd}/logs}"
+    if [ -d "$LOGS_PATH" ]; then
+        find "$LOGS_PATH" -name "*.log" -mtime -7 | \
+        tar -czf "$APP_BACKUP_DIR/recent-logs.tar.gz" --files-from=-
+    fi
 
     # Generate manifest
     cat > "$APP_BACKUP_DIR/manifest.txt" << EOF
@@ -143,13 +157,23 @@ EOF
         copy_app_backup_to_nas "$APP_BACKUP_DIR" || log_message "WARNING: NAS copy failed"
     fi
 
-    # Cleanup old local backups
-    find "$LOCAL_BACKUP_DIR" -maxdepth 1 -type d -name "20*" -mtime +$RETENTION_DAYS -exec rm -rf {} \;
+    # Zero Deletion Policy - Configurable thresholds for manual review
+    log_message "Zero deletion policy enforced - no automatic cleanup performed"
+    log_message "Configurable thresholds: Review=${RETENTION_DAYS}d, Archive=${ARCHIVE_THRESHOLD_DAYS}d, Long-term=${LONGTERM_THRESHOLD_DAYS}d"
 
-    # Cleanup old NAS backups
-    if [ "$NAS_ENABLED" = "true" ] && mountpoint -q "$NAS_MOUNT_PATH"; then
-        log_message "Cleaning up old NAS application backups (retention: $NAS_RETENTION_DAYS days)"
-        find "$NAS_BACKUP_DIR" -maxdepth 1 -type d -name "20*" -mtime +$NAS_RETENTION_DAYS -exec rm -rf {} \; 2>/dev/null || true
+    # Report application backups for different action thresholds
+    REVIEW_APP_BACKUPS=$(find "$LOCAL_BACKUP_DIR" -maxdepth 1 -type d -name "20*" -mtime +$RETENTION_DAYS | wc -l)
+    ARCHIVE_APP_BACKUPS=$(find "$LOCAL_BACKUP_DIR" -maxdepth 1 -type d -name "20*" -mtime +$ARCHIVE_THRESHOLD_DAYS | wc -l)
+    LONGTERM_APP_BACKUPS=$(find "$LOCAL_BACKUP_DIR" -maxdepth 1 -type d -name "20*" -mtime +$LONGTERM_THRESHOLD_DAYS | wc -l)
+
+    if [ "$REVIEW_APP_BACKUPS" -gt 0 ]; then
+        log_message "INFO: Found $REVIEW_APP_BACKUPS application backups older than $RETENTION_DAYS days requiring manual review"
+    fi
+    if [ "$ARCHIVE_APP_BACKUPS" -gt 0 ]; then
+        log_message "INFO: Found $ARCHIVE_APP_BACKUPS application backups older than $ARCHIVE_THRESHOLD_DAYS days suggested for HDD archive"
+    fi
+    if [ "$LONGTERM_APP_BACKUPS" -gt 0 ]; then
+        log_message "INFO: Found $LONGTERM_APP_BACKUPS application backups older than $LONGTERM_THRESHOLD_DAYS days suggested for NAS long-term storage"
     fi
 
     # Unmount NAS

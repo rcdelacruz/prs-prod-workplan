@@ -1,6 +1,6 @@
 # PRS On-Premises Production Docker Compose Configuration
 # Adapted from EC2 Graviton setup for on-premises deployment
-# Optimized for 16GB RAM, 100 concurrent users, and dual storage (SSD/HDD)
+# Optimized for 16GB RAM, 100 concurrent users, simplified HDD-only storage
 
 services:
   # Nginx Reverse Proxy (On-Premises Production - Internal Network)
@@ -25,8 +25,6 @@ services:
       - ./ssl:/etc/nginx/ssl:ro
       - uploads_data:/var/www/uploads:ro
       - nginx_cache:/var/cache/nginx
-      # Mount SSD for nginx cache performance
-      - /mnt/ssd/nginx-cache:/var/cache/nginx/ssd
     depends_on:
       - backend
       - frontend
@@ -105,7 +103,7 @@ services:
       - CITYLAND_API_USERNAME=${CITYLAND_API_USERNAME}
       - CITYLAND_API_PASSWORD=${CITYLAND_API_PASSWORD}
 
-      # File upload settings (SSD storage)
+      # File upload settings
       - UPLOAD_DRIVER=local
       - UPLOAD_PATH=/usr/app/upload
       - MAX_FILE_SIZE=${MAX_FILE_SIZE:-50m}
@@ -151,12 +149,15 @@ services:
       # Performance settings (16GB RAM optimized)
       - NODEJS_MAX_OLD_SPACE_SIZE=${NODEJS_MAX_OLD_SPACE_SIZE:-2048}
 
+      # Assocition
+      - ASSOCIATION_DEPARTMENT_CODE=${ASSOCIATION_DEPARTMENT_CODE:-10}
+
     volumes:
-      # Mount SSD for uploads and active data
+      # Mount HDD for uploads and active data
       - uploads_data:/usr/app/upload
       - logs_data:/usr/app/logs
       # Mount HDD for log archives
-      - /mnt/hdd/app-logs-archive:/usr/app/logs/archive
+      - ${STORAGE_HDD_PATH:-/mnt/hdd}/app-logs-archive:/usr/app/logs/archive
     depends_on:
       postgres:
         condition: service_healthy
@@ -211,7 +212,7 @@ services:
           memory: ${FRONTEND_MEMORY_LIMIT:-1g}
           cpus: '1.0'
 
-  # PostgreSQL Database with TimescaleDB (On-Premises - 16GB RAM Optimized)
+  # PostgreSQL Database with TimescaleDB (On-Premises - 16GB RAM Optimized, HDD Storage)
   postgres:
     image: timescale/timescaledb:latest-pg15
     container_name: prs-onprem-postgres-timescale
@@ -255,17 +256,13 @@ services:
       -c log_lock_waits=on
       -c deadlock_timeout=1s
       -c log_temp_files=0
-      -c temp_tablespaces=ssd_hot
-      -c default_tablespace=ssd_hot
+
     volumes:
       - database_data:/var/lib/postgresql/data
       - ./ssl:/etc/ssl/certs:ro
-      # TimescaleDB dual storage configuration
-      - /mnt/ssd/postgresql-hot:/mnt/ssd/postgresql-hot
-      - /mnt/hdd/postgresql-cold:/mnt/hdd/postgresql-cold
-      # Mount HDD storage for WAL archives and backups
-      - /mnt/hdd/postgres-wal-archive:/var/lib/postgresql/wal-archive
-      - /mnt/hdd/postgres-backups:/var/lib/postgresql/backups
+      # HDD storage for WAL archives and backups
+      - ${STORAGE_HDD_PATH:-/mnt/hdd}/postgres-wal-archive:/var/lib/postgresql/wal-archive
+      - ${STORAGE_HDD_PATH:-/mnt/hdd}/postgres-backups:/var/lib/postgresql/backups
     networks:
       prs_onprem_network:
         ipv4_address: 172.20.0.30
@@ -306,10 +303,8 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
-      # Mount SSD for Redis persistence performance
-      - /mnt/ssd/redis-persistence:/data/ssd
       # Mount HDD for Redis backups
-      - /mnt/hdd/redis-backups:/data/backups
+      - ${STORAGE_HDD_PATH:-/mnt/hdd}/redis-backups:/data/backups
     networks:
       prs_onprem_network:
         ipv4_address: 172.20.0.35
@@ -394,7 +389,7 @@ services:
     volumes:
       - logs_data:/app/logs
       # Mount HDD for worker log archives
-      - /mnt/hdd/worker-logs-archive:/app/logs/archive
+      - ${STORAGE_HDD_PATH:-/mnt/hdd}/worker-logs-archive:/app/logs/archive
     depends_on:
       postgres:
         condition: service_healthy
@@ -452,10 +447,8 @@ services:
     volumes:
       - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
-      # Mount SSD for Prometheus data performance
-      - /mnt/ssd/prometheus-data:/prometheus/ssd
       # Mount HDD for Prometheus archives
-      - /mnt/hdd/prometheus-archive:/prometheus/archive
+      - ${STORAGE_HDD_PATH:-/mnt/hdd}/prometheus-archive:/prometheus/archive
     networks:
       prs_onprem_network:
         ipv4_address: 172.20.0.45
@@ -500,8 +493,6 @@ services:
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - ./config/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
-      # Mount SSD for Grafana data performance
-      - /mnt/ssd/grafana-data:/var/lib/grafana/ssd
     networks:
       prs_onprem_network:
         ipv4_address: 172.20.0.25
@@ -537,8 +528,7 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
-      - /mnt/ssd:/host/ssd:ro
-      - /mnt/hdd:/host/hdd:ro
+      - ${STORAGE_HDD_PATH:-/mnt/hdd}:/host/hdd:ro
     networks:
       prs_onprem_network:
         ipv4_address: 172.20.0.50
@@ -593,63 +583,68 @@ networks:
       com.docker.network.bridge.enable_ip_masquerade: "true"
       com.docker.network.driver.mtu: 1500
 
-# Volume Configuration (Optimized for SSD/HDD Dual Storage)
+# Volume Configuration (Simplified HDD-Only Storage)
 volumes:
-  # Database volumes (Primary on SSD, backup on HDD)
+  # Database volumes (All data on HDD for simplicity)
   database_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${STORAGE_HDD_PATH:-/mnt/hdd}/postgresql-data
 
-  # Redis volumes (Primary on SSD, backup on HDD)
+  # Redis volumes (HDD storage)
   redis_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ssd/redis-data
+      device: ${STORAGE_HDD_PATH:-/mnt/hdd}/redis-data
 
-  # Upload volumes (Primary on SSD, archive on HDD)
+  # Upload volumes (HDD storage)
   uploads_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ssd/uploads
+      device: ${STORAGE_HDD_PATH:-/mnt/hdd}/uploads
 
-  # Log volumes (Active on SSD, archive on HDD)
+  # Log volumes (HDD storage)
   logs_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ssd/logs
+      device: ${STORAGE_HDD_PATH:-/mnt/hdd}/logs
 
-  # Nginx cache (SSD for performance)
+  # Nginx cache (HDD storage)
   nginx_cache:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ssd/nginx-cache
+      device: ${STORAGE_HDD_PATH:-/mnt/hdd}/nginx-cache
 
-  # Prometheus data (Primary on SSD, archive on HDD)
+  # Prometheus data (HDD storage)
   prometheus_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ssd/prometheus-data
+      device: ${STORAGE_HDD_PATH:-/mnt/hdd}/prometheus-data
 
-  # Grafana data (SSD for dashboard performance)
+  # Grafana data (HDD storage)
   grafana_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ssd/grafana-data
+      device: ${STORAGE_HDD_PATH:-/mnt/hdd}/grafana-data
 
-  # Portainer data (SSD for management interface)
+  # Portainer data (HDD storage)
   portainer_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ssd/portainer-data
+      device: ${STORAGE_HDD_PATH:-/mnt/hdd}/portainer-data

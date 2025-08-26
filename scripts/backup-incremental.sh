@@ -4,8 +4,8 @@
 
 set -euo pipefail
 
-BACKUP_DIR="/mnt/hdd/postgres-backups/incremental"
-WAL_ARCHIVE_DIR="/mnt/hdd/wal-archive"
+BACKUP_DIR="${STORAGE_HDD_PATH:-/mnt/hdd}/postgres-backups/incremental"
+WAL_ARCHIVE_DIR="${STORAGE_HDD_PATH:-/mnt/hdd}/wal-archive"
 RETENTION_DAYS=7
 LOG_FILE="/var/log/prs-backup.log"
 
@@ -32,7 +32,7 @@ main() {
     mkdir -p "$BACKUP_DIR"
 
     # Find WAL files since last full backup
-    local LAST_FULL_BACKUP=$(ls -t /mnt/hdd/postgres-backups/daily/prs_full_backup_*.sql* 2>/dev/null | head -1)
+    local LAST_FULL_BACKUP=$(ls -t ${STORAGE_HDD_PATH:-/mnt/hdd}/postgres-backups/daily/prs_full_backup_*.sql* 2>/dev/null | head -1)
 
     if [ -z "$LAST_FULL_BACKUP" ]; then
         log_message "No full backup found, running full backup first"
@@ -57,7 +57,11 @@ main() {
     sha256sum "$INCREMENTAL_FILE" > "${INCREMENTAL_FILE}.sha256"
 
     # Cleanup old incremental backups
-    find "$BACKUP_DIR" -name "prs_incremental_backup_*.tar.gz*" -mtime +$RETENTION_DAYS -delete
+    # Zero deletion policy - report old backups instead of deleting
+    OLD_INCREMENTAL=$(find "$BACKUP_DIR" -name "prs_incremental_backup_*.tar.gz*" -mtime +$RETENTION_DAYS | wc -l)
+    if [ "$OLD_INCREMENTAL" -gt 0 ]; then
+        echo "$(date): Found $OLD_INCREMENTAL incremental backups older than $RETENTION_DAYS days requiring manual review" >> "$LOG_FILE"
+    fi
 
     local BACKUP_SIZE=$(stat -c%s "$INCREMENTAL_FILE")
     log_message "Incremental backup completed: $INCREMENTAL_FILE ($(numfmt --to=iec $BACKUP_SIZE))"
